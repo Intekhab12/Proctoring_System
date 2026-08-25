@@ -38,7 +38,11 @@ const Navbar = () => {
       }
     }
     if (notif.link) {
-      navigate(notif.link);
+      if (window.location.pathname === notif.link) {
+        window.location.reload();
+      } else {
+        navigate(notif.link);
+      }
     }
   };
 

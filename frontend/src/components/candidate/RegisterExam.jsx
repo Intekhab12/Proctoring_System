@@ -48,13 +48,14 @@ const RegisterExam = () => {
         setError("This exam is not published yet.");
       } else if (data.status === 'submitted' || data.status === 'evaluated') {
         setError("You have already submitted this exam.");
+      } else if (data.status === 'registered' || data.status === 'started') {
+        // Already registered — jump straight to taking the exam
+        navigate(`/exam/take/${examId}`, { replace: true });
+        return;
       } else if (new Date(data.exam.end_time) < new Date()) {
         setError("The registration window for this exam has ended.");
       } else {
         setExam(data.exam);
-        if (data.status === 'registered') {
-          setRegistered(true);
-        }
       }
     } catch (err) {
       setError(err.response?.data?.error || "Failed to verify exam invitation.");
@@ -68,7 +69,7 @@ const RegisterExam = () => {
       setLoading(true);
       await examService.registerForExam(examId);
       setRegistered(true);
-      setTimeout(() => navigate('/dashboard'), 3000);
+      navigate(`/exam/take/${examId}`, { replace: true });
     } catch (err) {
       const data = err.response?.data;
       let errMsg = 'Registration failed';
@@ -80,6 +81,13 @@ const RegisterExam = () => {
         else if (data.message) errMsg = data.message;
         else if (data.non_field_errors) errMsg = data.non_field_errors[0];
       }
+      
+      // If candidate is already registered, take them straight to the exam
+      if (errMsg.toLowerCase().includes('already registered')) {
+        navigate(`/exam/take/${examId}`, { replace: true });
+        return;
+      }
+
       setError(errMsg);
     } finally {
       setLoading(false);

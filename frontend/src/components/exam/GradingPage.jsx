@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Container, Typography, Box, Paper, Button, TextField, 
-  CircularProgress, Alert, Divider, Chip,
-  Tabs, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow
+  CircularProgress, Alert, Divider, Chip, Grid,
+  Tabs, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Link, Modal, Fade, Backdrop
 } from '@mui/material';
 import examService from '../../api/examService';
 
@@ -17,6 +17,10 @@ const GradingPage = () => {
   const [publishing, setPublishing] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   const [proctoringLogs, setProctoringLogs] = useState([]);
+  const [fullAudioRecording, setFullAudioRecording] = useState(null);
+  const [videoRecording, setVideoRecording] = useState(null);
+  const [selectedEvidence, setSelectedEvidence] = useState(null);
+  const videoPlayerRef = useRef(null);
 
   // Local state for edits
   const [edits, setEdits] = useState({});
@@ -46,6 +50,22 @@ const GradingPage = () => {
         setProctoringLogs(logsRes.data);
       } catch(logErr) {
         console.error('Failed to fetch proctoring logs', logErr);
+      }
+
+      // Fetch full audio recording
+      try {
+        const audioRes = await examService.getExamAudio(submissionId);
+        setFullAudioRecording(audioRes.data);
+      } catch(audioErr) {
+        console.error('Failed to fetch exam audio recording', audioErr);
+      }
+
+      // Fetch video recording
+      try {
+        const videoRes = await examService.getExamVideo(submissionId);
+        setVideoRecording(videoRes.data);
+      } catch(videoErr) {
+        console.error('Failed to fetch exam video recording', videoErr);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to fetch submission details.');
@@ -155,6 +175,8 @@ const GradingPage = () => {
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
           <Tab label="Answers & Grading" />
           <Tab label={`Proctoring Logs (${proctoringLogs.length})`} />
+          <Tab label={fullAudioRecording?.audio_url ? "Full Audio Recording (1)" : "Full Audio Recording (0)"} />
+          <Tab label={videoRecording?.video_url ? "Video Proctoring (1)" : "Video Proctoring (0)"} />
         </Tabs>
       </Box>
 
@@ -218,6 +240,7 @@ const GradingPage = () => {
                   <TableCell>Timestamp</TableCell>
                   <TableCell>Event Type</TableCell>
                   <TableCell>Details</TableCell>
+                  <TableCell>Evidence</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -230,10 +253,21 @@ const GradingPage = () => {
                     <TableRow key={log.id}>
                       <TableCell>{new Date(log.timestamp).toLocaleString()}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={log.event_type} color={log.event_type.includes('exit') ? 'error' : 'warning'} />
+                        <Chip size="small" label={log.event_type} color={log.event_type.includes('exit') || log.event_type.includes('spike') || log.event_type.includes('face') ? 'error' : 'warning'} />
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                         {JSON.stringify(log.details)}
+                      </TableCell>
+                      <TableCell>
+                        {log.evidence ? (
+                          <Link 
+                            component="button" 
+                            variant="body2" 
+                            onClick={() => setSelectedEvidence(log.evidence)}
+                          >
+                            View
+                          </Link>
+                        ) : 'N/A'}
                       </TableCell>
                     </TableRow>
                   ))
@@ -243,6 +277,150 @@ const GradingPage = () => {
           </TableContainer>
         </Paper>
       )}
+
+      {tabValue === 2 && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>Full Session Audio Recording</Typography>
+          <Typography variant="body2" color="textSecondary" mb={3}>
+            Listen to the complete audio recording captured during the entire exam session.
+          </Typography>
+          {!fullAudioRecording || !fullAudioRecording.audio_url ? (
+            <Alert severity="info">No audio recording available for this submission.</Alert>
+          ) : (
+            <Paper variant="outlined" sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, bgcolor: 'grey.50' }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Chip label="Full Session Audio" color="primary" />
+                <Typography variant="caption" color="textSecondary">
+                  Uploaded at: {new Date(fullAudioRecording.uploaded_at).toLocaleString()}
+                </Typography>
+              </Box>
+              <audio controls src={fullAudioRecording.audio_url} style={{ width: '100%', marginTop: '8px' }} />
+            </Paper>
+          )}
+        </Paper>
+      )}
+
+      {tabValue === 3 && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>Full Session Video Proctoring</Typography>
+          <Typography variant="body2" color="textSecondary" mb={3}>
+            Watch full session video recording. Click any incident in the timeline to jump to that moment in the video.
+          </Typography>
+          {!videoRecording || !videoRecording.video_url ? (
+            <Alert severity="info">No video recording available for this submission.</Alert>
+          ) : (
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={7}>
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'black', borderRadius: 2 }}>
+                  <video 
+                    ref={videoPlayerRef} 
+                    controls 
+                    src={videoRecording.video_url} 
+                    style={{ width: '100%', maxHeight: '420px', borderRadius: '4px' }} 
+                  />
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
+                    <Typography variant="caption" color="grey.400">
+                      Uploaded: {new Date(videoRecording.uploaded_at).toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <Paper variant="outlined" sx={{ p: 2, maxHeight: 480, overflowY: 'auto' }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Incident Timeline ({proctoringLogs.length})
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  {proctoringLogs.length === 0 ? (
+                    <Typography variant="body2" color="textSecondary">No incidents recorded.</Typography>
+                  ) : (
+                    <Box display="flex" flexDirection="column" gap={1.5}>
+                      {proctoringLogs.map((log, idx) => {
+                        // Calculate offset from first log / exam start if applicable
+                        const firstTime = new Date(proctoringLogs[proctoringLogs.length - 1].timestamp).getTime();
+                        const logTime = new Date(log.timestamp).getTime();
+                        const offsetSec = Math.max(0, Math.floor((logTime - firstTime) / 1000));
+
+                        return (
+                          <Paper 
+                            key={log.id || idx} 
+                            variant="outlined" 
+                            sx={{ 
+                              p: 1.5, 
+                              cursor: 'pointer', 
+                              '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' } 
+                            }}
+                            onClick={() => {
+                              if (videoPlayerRef.current) {
+                                videoPlayerRef.current.currentTime = offsetSec;
+                                videoPlayerRef.current.play().catch(() => {});
+                              }
+                            }}
+                          >
+                            <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                              <Chip 
+                                size="small" 
+                                label={log.event_type} 
+                                color={log.event_type.includes('exit') || log.event_type.includes('spike') || log.event_type.includes('face') ? 'error' : 'warning'} 
+                              />
+                              <Typography variant="caption" color="primary" fontWeight="bold">
+                                Jump to {Math.floor(offsetSec / 60)}m {offsetSec % 60}s
+                              </Typography>
+                            </Box>
+                            <Typography variant="caption" display="block" color="textSecondary">
+                              {new Date(log.timestamp).toLocaleTimeString()}
+                            </Typography>
+                          </Paper>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+        </Paper>
+      )}
+
+      {/* Evidence Modal */}
+      <Modal
+        open={!!selectedEvidence}
+        onClose={() => setSelectedEvidence(null)}
+        closeAfterTransition
+        slots={{ backdrop: Backdrop }}
+        slotProps={{
+          backdrop: {
+            timeout: 500,
+          },
+        }}
+      >
+        <Fade in={!!selectedEvidence}>
+          <Box sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            boxShadow: 24,
+            p: 1,
+            bgcolor: 'background.paper',
+            outline: 'none',
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
+            {selectedEvidence && (
+              <audio 
+                src={selectedEvidence} 
+                controls
+                autoPlay
+                style={{ maxWidth: '100%' }} 
+              />
+            )}
+          </Box>
+        </Fade>
+      </Modal>
 
       {!isEvaluated && (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4 }}>

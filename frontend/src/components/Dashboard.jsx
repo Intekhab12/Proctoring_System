@@ -68,19 +68,26 @@ const Dashboard = () => {
 
               <Typography variant="subtitle1" mt={4} mb={1}>Registered Exams ({registeredExams.length})</Typography>
               <List>
-                {registeredExams.map(exam => (
-                  <ListItem key={exam.id} divider>
-                    <ListItemText 
-                      primary={exam.title} 
-                      secondary={`Duration: ${exam.duration_minutes} mins`} 
-                    />
-                    <ListItemSecondaryAction>
-                      <Button variant="contained" color="success" onClick={() => navigate(`/exam/take/${exam.id}`)}>
-                        Start Exam
-                      </Button>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
+                {registeredExams.map(exam => {
+                  const isExpired = new Date(exam.end_time) < new Date();
+                  return (
+                    <ListItem key={exam.id} divider>
+                      <ListItemText 
+                        primary={exam.title} 
+                        secondary={`Duration: ${exam.duration_minutes} mins | Ends: ${new Date(exam.end_time).toLocaleString()}`} 
+                      />
+                      <ListItemSecondaryAction>
+                        {isExpired ? (
+                          <Chip label="Expired" color="error" variant="outlined" />
+                        ) : (
+                          <Button variant="contained" color="success" onClick={() => navigate(`/exam/take/${exam.id}`)}>
+                            Start Exam
+                          </Button>
+                        )}
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  );
+                })}
                 {registeredExams.length === 0 && <Typography variant="body2" color="textSecondary" sx={{ ml: 2, mt: 1 }}>No registered exams yet.</Typography>}
               </List>
             </Box>

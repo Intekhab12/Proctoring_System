@@ -6,7 +6,9 @@ from .views import (
     ExamRegistrationView, AvailableExamsView,
     ExamTakeView, SaveAnswerView, SubmitExamView,
     SubmissionDetailView, AnswerGradingView, PublishResultsView,
-    CandidateExamStatusView, ProctoringLogCreateView, ProctoringLogListView
+    CandidateExamStatusView, ProctoringLogCreateView, ProctoringLogListView,
+    ProctoringScreenshotUploadView, AudioUploadView, ExamAudioDetailView,
+    VideoUploadView, ExamVideoDetailView
 )
 
 router = DefaultRouter()
@@ -60,7 +62,12 @@ urlpatterns = [
     
     # Proctoring routes
     path('proctoring/logs/', ProctoringLogCreateView.as_view(), name='proctoring-log-create'),
+    path('proctoring/screenshot/', ProctoringScreenshotUploadView.as_view(), name='proctoring-screenshot-upload'),
+    path('proctoring/audio/', AudioUploadView.as_view(), name='proctoring-audio-upload'),
+    path('proctoring/video/', VideoUploadView.as_view(), name='proctoring-video-upload'),
     path('submissions/<uuid:submission_id>/logs/', ProctoringLogListView.as_view(), name='proctoring-log-list'),
+    path('submissions/<uuid:submission_id>/audio/', ExamAudioDetailView.as_view(), name='submission-audio-detail'),
+    path('submissions/<uuid:submission_id>/video/', ExamVideoDetailView.as_view(), name='submission-video-detail'),
     
     # Grading routes
     path('submissions/<uuid:submission_id>/', SubmissionDetailView.as_view(), name='submission-detail'),

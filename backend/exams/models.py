@@ -99,6 +99,7 @@ class ProctoringLog(models.Model):
     event_type = models.CharField(max_length=50)
     details = models.JSONField(default=dict)
     timestamp = models.DateTimeField(auto_now_add=True)
+    evidence = models.FileField(upload_to='proctoring_evidence/', null=True, blank=True)
     flagged = models.BooleanField(default=False)
 
     class Meta:
@@ -106,3 +107,22 @@ class ProctoringLog(models.Model):
 
     def __str__(self):
         return f"{self.event_type} for Submission {self.submission.id}"
+
+class ExamAudioRecording(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submission = models.OneToOneField(Submission, on_delete=models.CASCADE, related_name='full_audio_recording')
+    audio_file = models.FileField(upload_to='proctoring_full_audio/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Full Audio Recording for Submission {self.submission.id}"
+
+class ExamVideoRecording(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submission = models.OneToOneField(Submission, on_delete=models.CASCADE, related_name='video_recording')
+    video_file = models.FileField(upload_to='proctoring_videos/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Video Recording for Submission {self.submission.id}"
+

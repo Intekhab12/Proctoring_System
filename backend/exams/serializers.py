@@ -56,5 +56,5 @@ class SubmissionEvaluationSerializer(serializers.ModelSerializer):
 class ProctoringLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProctoringLog
-        fields = ['id', 'submission', 'event_type', 'details', 'timestamp', 'flagged']
+        fields = ['id', 'submission', 'event_type', 'details', 'timestamp', 'evidence', 'flagged']
         read_only_fields = ['id', 'timestamp']

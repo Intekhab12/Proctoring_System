@@ -47,6 +47,17 @@ const examService = {
   // Proctoring
   logProctoringIncident: (data) => axiosInstance.post('/api/exams/proctoring/logs/', data),
   getProctoringLogs: (submissionId) => axiosInstance.get(`/api/exams/submissions/${submissionId}/logs/`),
+  uploadProctoringScreenshot: (formData) => axiosInstance.post('/api/exams/proctoring/screenshot/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  uploadFullAudio: (formData) => axiosInstance.post('/api/exams/proctoring/audio/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getExamAudio: (submissionId) => axiosInstance.get(`/api/exams/submissions/${submissionId}/audio/`),
+  uploadFullVideo: (formData) => axiosInstance.post('/api/exams/proctoring/video/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getExamVideo: (submissionId) => axiosInstance.get(`/api/exams/submissions/${submissionId}/video/`),
 };
 
 export default examService;

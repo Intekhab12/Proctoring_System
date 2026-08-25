@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.utils import timezone
 
-from .models import Exam, Question, ExamEligibility, Submission, Answer, ProctoringLog
+from .models import Exam, Question, ExamEligibility, Submission, Answer, ProctoringLog, ExamAudioRecording, ExamVideoRecording
 from .serializers import (
     ExamSerializer, QuestionSerializer, ExamEligibilitySerializer,
     SubmissionEvaluationSerializer, AnswerEvaluationSerializer,
@@ -463,9 +463,16 @@ class ProctoringLogCreateView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        import json
         submission_id = request.data.get('submission_id')
         event_type = request.data.get('event_type')
         details = request.data.get('details', {})
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except json.JSONDecodeError:
+                details = {}
+        evidence = request.FILES.get('evidence')
 
         if not submission_id or not event_type:
             return Response({'error': 'submission_id and event_type are required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -478,9 +485,55 @@ class ProctoringLogCreateView(views.APIView):
         log = ProctoringLog.objects.create(
             submission=submission,
             event_type=event_type,
-            details=details
+            details=details,
+            evidence=evidence
         )
         return Response({'message': 'Log created successfully', 'id': log.id}, status=status.HTTP_201_CREATED)
+
+class ProctoringScreenshotUploadView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        submission_id = request.data.get('submission_id')
+        evidence = request.FILES.get('evidence')
+
+        if not submission_id or not evidence:
+            return Response({'error': 'submission_id and evidence are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission = get_object_or_404(Submission, id=submission_id, candidate=request.user)
+        
+        if submission.status == 'submitted':
+            return Response({'error': 'Exam already submitted'}, status=status.HTTP_400_BAD_REQUEST)
+
+        log = ProctoringLog.objects.create(
+            submission=submission,
+            event_type='periodic_screenshot',
+            details={},
+            evidence=evidence
+        )
+        return Response({'message': 'Evidence uploaded successfully', 'url': log.evidence.url if log.evidence else None}, status=status.HTTP_201_CREATED)
+
+class AudioUploadView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        submission_id = request.data.get('submission_id')
+        audio_file = request.FILES.get('audio')
+
+        if not submission_id or not audio_file:
+            return Response({'error': 'submission_id and audio are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission = get_object_or_404(Submission, id=submission_id, candidate=request.user)
+
+        recording, created = ExamAudioRecording.objects.update_or_create(
+            submission=submission,
+            defaults={'audio_file': audio_file}
+        )
+        return Response({
+            'message': 'Full audio recording uploaded successfully',
+            'id': str(recording.id),
+            'audio_url': request.build_absolute_uri(recording.audio_file.url) if recording.audio_file else None
+        }, status=status.HTTP_201_CREATED)
 
 class ProctoringLogListView(views.APIView):
     permission_classes = [IsAuthenticated]
@@ -495,3 +548,68 @@ class ProctoringLogListView(views.APIView):
         logs = submission.proctoring_logs.all().order_by('timestamp')
         serializer = ProctoringLogSerializer(logs, many=True)
         return Response(serializer.data)
+
+class VideoUploadView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        submission_id = request.data.get('submission_id')
+        video_file = request.FILES.get('video')
+
+        if not submission_id or not video_file:
+            return Response({'error': 'submission_id and video are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission = get_object_or_404(Submission, id=submission_id, candidate=request.user)
+
+        recording, created = ExamVideoRecording.objects.update_or_create(
+            submission=submission,
+            defaults={'video_file': video_file}
+        )
+        # Also populate full_audio_recording so audio player tab is populated
+        ExamAudioRecording.objects.update_or_create(
+            submission=submission,
+            defaults={'audio_file': video_file}
+        )
+        return Response({
+            'message': 'Video recording uploaded successfully',
+            'id': str(recording.id),
+            'video_url': request.build_absolute_uri(recording.video_file.url) if recording.video_file else None
+        }, status=status.HTTP_201_CREATED)
+
+class ExamVideoDetailView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, submission_id):
+        submission = get_object_or_404(Submission, id=submission_id)
+
+        if submission.exam.creator != request.user and submission.candidate != request.user:
+            raise PermissionDenied("Only the exam creator or candidate can view the video recording.")
+
+        recording = getattr(submission, 'video_recording', None)
+        if not recording or not recording.video_file:
+            return Response({'video_url': None})
+
+        return Response({
+            'id': str(recording.id),
+            'video_url': request.build_absolute_uri(recording.video_file.url),
+            'uploaded_at': recording.uploaded_at
+        })
+
+class ExamAudioDetailView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, submission_id):
+        submission = get_object_or_404(Submission, id=submission_id)
+
+        if submission.exam.creator != request.user and submission.candidate != request.user:
+            raise PermissionDenied("Only the exam creator or candidate can view the audio recording.")
+
+        recording = getattr(submission, 'full_audio_recording', None)
+        if not recording or not recording.audio_file:
+            return Response({'audio_url': None})
+
+        return Response({
+            'id': str(recording.id),
+            'audio_url': request.build_absolute_uri(recording.audio_file.url),
+            'uploaded_at': recording.uploaded_at
+        })
