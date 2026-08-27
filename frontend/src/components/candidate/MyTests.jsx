@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, Box, Paper, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, CircularProgress, Alert,
-  Breadcrumbs, Link, Card, CardContent, Grid
+  Breadcrumbs, Link, Card, CardContent, Grid, Button
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import examService from '../../api/examService';
@@ -106,6 +106,7 @@ const MyTests = () => {
                   <TableCell sx={{ fontWeight: 'bold' }}>Exam Title</TableCell>
                   <TableCell sx={{ fontWeight: 'bold' }}>Date & Time</TableCell>
                   <TableCell sx={{ fontWeight: 'bold' }}>Duration</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }} align="center">Results</TableCell>
                   <TableCell sx={{ fontWeight: 'bold' }} align="right">Status</TableCell>
                 </TableRow>
               </TableHead>
@@ -130,6 +131,20 @@ const MyTests = () => {
                       <Typography variant="body2" color="textSecondary">
                         {exam.duration_minutes} mins
                       </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      {exam.submission_status === 'evaluated' ? (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          color="primary"
+                          onClick={() => navigate(`/candidate-results/${exam.submission_id}`)}
+                        >
+                          View Results
+                        </Button>
+                      ) : (
+                        <Typography variant="body2" color="textSecondary">-</Typography>
+                      )}
                     </TableCell>
                     <TableCell align="right">
                       {getStatusChip(exam.status)}

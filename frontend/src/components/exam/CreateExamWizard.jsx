@@ -20,7 +20,7 @@ const CreateExamWizard = () => {
   
   // Step 1: Basic Info
   const [basicInfo, setBasicInfo] = useState({
-    title: '', description: '', guidelines: '', duration_minutes: 60,
+    title: '', description: '', duration_minutes: 60,
     start_time: '', end_time: '', randomize_questions: false
   });
 
@@ -38,10 +38,28 @@ const CreateExamWizard = () => {
     setError('');
     try {
       if (activeStep === 0) {
+        if (!basicInfo.title || !basicInfo.duration_minutes || !basicInfo.start_time || !basicInfo.end_time) {
+          setError('Please fill in all required fields (Title, Duration, Start Time, and End Time).');
+          return;
+        }
+        
+        let startDate = new Date(basicInfo.start_time);
+        let endDate = new Date(basicInfo.end_time);
+        
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          setError('Please provide valid dates for Start Time and End Time.');
+          return;
+        }
+
+        if (endDate <= startDate) {
+          setError('End Time must be after Start Time.');
+          return;
+        }
+
         const payload = {
           ...basicInfo,
-          start_time: new Date(basicInfo.start_time).toISOString(),
-          end_time: new Date(basicInfo.end_time).toISOString()
+          start_time: startDate.toISOString(),
+          end_time: endDate.toISOString()
         };
         if (!examId) {
           const res = await examService.createExam(payload);
@@ -110,14 +128,29 @@ const CreateExamWizard = () => {
     switch (step) {
       case 0:
         return (
-          <Box display="flex" flexDirection="column" gap={2}>
-            <TextField label="Title" value={basicInfo.title} onChange={e => setBasicInfo({...basicInfo, title: e.target.value})} required />
-            <TextField label="Description" multiline rows={3} value={basicInfo.description} onChange={e => setBasicInfo({...basicInfo, description: e.target.value})} />
-            <TextField label="Guidelines" multiline rows={3} value={basicInfo.guidelines} onChange={e => setBasicInfo({...basicInfo, guidelines: e.target.value})} />
-            <TextField label="Duration (minutes)" type="number" value={basicInfo.duration_minutes} onChange={e => setBasicInfo({...basicInfo, duration_minutes: e.target.value})} required />
-            <TextField label="Start Time" type="datetime-local" InputLabelProps={{ shrink: true }} value={basicInfo.start_time} onChange={e => setBasicInfo({...basicInfo, start_time: e.target.value})} required />
-            <TextField label="End Time" type="datetime-local" InputLabelProps={{ shrink: true }} value={basicInfo.end_time} onChange={e => setBasicInfo({...basicInfo, end_time: e.target.value})} required />
-            <FormControlLabel control={<Checkbox checked={basicInfo.randomize_questions} onChange={e => setBasicInfo({...basicInfo, randomize_questions: e.target.checked})} />} label="Randomize Question Order" />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 2 }}>
+            <TextField fullWidth label="Exam Title" value={basicInfo.title} onChange={e => setBasicInfo({...basicInfo, title: e.target.value})} required variant="outlined" />
+            
+            <TextField fullWidth label="Description" multiline rows={3} value={basicInfo.description} onChange={e => setBasicInfo({...basicInfo, description: e.target.value})} variant="outlined" />
+            
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 3 }}>
+              <TextField fullWidth label="Duration (minutes)" type="number" value={basicInfo.duration_minutes} onChange={e => setBasicInfo({...basicInfo, duration_minutes: e.target.value})} required variant="outlined" />
+              
+              <Box>
+                <Typography variant="caption" color="textSecondary" sx={{ mb: 0.5, display: 'block' }}>Start Time *</Typography>
+                <TextField fullWidth type="datetime-local" value={basicInfo.start_time} onChange={e => setBasicInfo({...basicInfo, start_time: e.target.value})} required variant="outlined" />
+              </Box>
+
+              <Box>
+                <Typography variant="caption" color="textSecondary" sx={{ mb: 0.5, display: 'block' }}>End Time *</Typography>
+                <TextField fullWidth type="datetime-local" value={basicInfo.end_time} onChange={e => setBasicInfo({...basicInfo, end_time: e.target.value})} required variant="outlined" />
+              </Box>
+            </Box>
+
+            <FormControlLabel 
+              control={<Checkbox checked={basicInfo.randomize_questions} onChange={e => setBasicInfo({...basicInfo, randomize_questions: e.target.checked})} color="primary" />} 
+              label="Randomize Question Order" 
+            />
           </Box>
         );
       case 1:

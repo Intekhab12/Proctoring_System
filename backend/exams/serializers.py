@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Exam, Question, ExamEligibility, Submission, Answer, ProctoringLog
+from .models import Exam, Question, ExamEligibility, Submission, Answer, ProctoringLog, Dispute
 from users.models import User
 
 class QuestionSerializer(serializers.ModelSerializer):
@@ -58,3 +58,19 @@ class ProctoringLogSerializer(serializers.ModelSerializer):
         model = ProctoringLog
         fields = ['id', 'submission', 'event_type', 'details', 'timestamp', 'evidence', 'flagged']
         read_only_fields = ['id', 'timestamp']
+
+class DisputeSerializer(serializers.ModelSerializer):
+    raised_by_name = serializers.CharField(source='raised_by.full_name', read_only=True)
+    replied_by_name = serializers.CharField(source='replied_by.full_name', read_only=True)
+    question_text = serializers.CharField(source='question.text', read_only=True)
+    exam_title = serializers.CharField(source='submission.exam.title', read_only=True)
+
+    class Meta:
+        model = Dispute
+        fields = [
+            'id', 'submission', 'question', 'question_text', 'exam_title', 
+            'raised_by', 'raised_by_name', 'message', 'reply', 
+            'replied_by', 'replied_by_name', 'replied_at', 'status', 
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'raised_by', 'replied_by', 'replied_at', 'created_at', 'updated_at']

@@ -56,13 +56,14 @@ const Navbar = () => {
   return (
     <AppBar position="static">
       <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/')}>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1, cursor: 'pointer', textAlign: 'left' }} onClick={() => navigate('/')}>
           Proctoring System
         </Typography>
         {user ? (
           <Box display="flex" alignItems="center" gap={2}>
             <Button color="inherit" onClick={() => navigate('/exams')}>Exams</Button>
             <Button color="inherit" onClick={() => navigate('/my-tests')}>My Tests</Button>
+            <Button color="inherit" onClick={() => navigate('/my-disputes')}>My Disputes</Button>
             
             <IconButton color="inherit" onClick={handleOpenMenu}>
               <Badge badgeContent={unreadCount} color="error">

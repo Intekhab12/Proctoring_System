@@ -59,6 +59,16 @@ const examService = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   getExamVideo: (submissionId) => axiosInstance.get(`/api/exams/submissions/${submissionId}/video/`),
+  
+  // Disputes
+  createDispute: (data) => axiosInstance.post('/api/exams/disputes/', data),
+  getMyDisputes: () => axiosInstance.get('/api/exams/disputes/me/'),
+  getExamDisputes: (examId) => axiosInstance.get(`/api/exams/${examId}/disputes/`),
+  replyDispute: (id, data) => axiosInstance.patch(`/api/exams/disputes/${id}/reply/`, data),
+  resolveDispute: (id) => axiosInstance.post(`/api/exams/disputes/${id}/resolve/`),
+  
+  // Candidate results
+  getCandidateResult: (submissionId) => axiosInstance.get(`/api/exams/submissions/${submissionId}/candidate-result/`),
 };
 
 export default examService;

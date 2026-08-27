@@ -13,6 +13,7 @@ import ChangeHistoryIcon from '@mui/icons-material/ChangeHistory';
 import HorizontalRuleIcon from '@mui/icons-material/HorizontalRule';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import PanToolIcon from '@mui/icons-material/PanTool';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 const COLORS = [
   '#000000', '#ffffff', '#e53935', '#1e88e5', '#43a047', 
@@ -45,6 +46,9 @@ const Whiteboard = ({ questionId, savedData, onSave }) => {
   const [textPos, setTextPos] = useState(null);
   const [textValue, setTextValue] = useState('');
   const [fontSize, setFontSize] = useState(18);
+
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ y: 0, scrollTop: 0 });
 
   const containerHeight = isExpanded ? CANVAS_HEIGHT_EXPANDED : CANVAS_HEIGHT_COLLAPSED;
 
@@ -226,7 +230,16 @@ const Whiteboard = ({ questionId, savedData, onSave }) => {
 
   // --- Drawing handlers ---
   const startDrawing = (e) => {
-    if (tool === 'pan') return; // Let the browser handle panning/scrolling
+    if (tool === 'pan') {
+      if (!e.touches) {
+        setIsPanning(true);
+        setPanStart({
+          y: e.clientY,
+          scrollTop: containerRef.current.scrollTop
+        });
+      }
+      return; 
+    }
     e.preventDefault();
     const { x, y } = getCoords(e);
     const ctx = contextRef.current;
@@ -269,7 +282,13 @@ const Whiteboard = ({ questionId, savedData, onSave }) => {
   };
 
   const draw = (e) => {
-    if (tool === 'pan') return;
+    if (tool === 'pan') {
+      if (isPanning && !e.touches && containerRef.current) {
+        const deltaY = e.clientY - panStart.y;
+        containerRef.current.scrollTop = panStart.scrollTop - deltaY;
+      }
+      return;
+    }
     e.preventDefault();
     if (!isDrawing) return;
     const { x, y } = getCoords(e);
@@ -309,7 +328,10 @@ const Whiteboard = ({ questionId, savedData, onSave }) => {
   };
 
   const stopDrawing = (e) => {
-    if (tool === 'pan') return;
+    if (tool === 'pan') {
+      setIsPanning(false);
+      return;
+    }
     if (e) e.preventDefault();
     if (!isDrawing) return;
     setIsDrawing(false);
@@ -377,7 +399,7 @@ const Whiteboard = ({ questionId, savedData, onSave }) => {
   };
 
   const getCursorStyle = () => {
-    if (tool === 'pan') return 'grab';
+    if (tool === 'pan') return isPanning ? 'grabbing' : 'grab';
     if (tool === 'eraser') return 'cell';
     if (tool === 'text') return 'text';
     return 'crosshair';
@@ -438,7 +460,7 @@ const Whiteboard = ({ questionId, savedData, onSave }) => {
             <Tooltip title="Pen"><CreateIcon sx={{ fontSize: 18 }} /></Tooltip>
           </ToggleButton>
           <ToggleButton value="eraser">
-            <Tooltip title="Eraser"><BrushIcon sx={{ fontSize: 18 }} /></Tooltip>
+            <Tooltip title="Eraser"><AutoFixHighIcon sx={{ fontSize: 18 }} /></Tooltip>
           </ToggleButton>
           <ToggleButton value="text">
             <Tooltip title="Text"><TextFieldsIcon sx={{ fontSize: 18 }} /></Tooltip>

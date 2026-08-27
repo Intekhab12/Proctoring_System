@@ -458,14 +458,23 @@ class PublishResultsView(views.APIView):
             subject=f"Results Published: {submission.exam.title}",
             message=f"Hi {submission.candidate.full_name or 'Candidate'},\n\n"
                     f"Your results for {submission.exam.title} have been published.\n"
-                    f"You scored: {submission.total_score} marks.\n\n"
-                    f"Please log in to your dashboard to view detailed feedback.",
+                    f"Please log in to your dashboard and view your results in the My Tests section.\n\n"
+                    f"Thank you,\nProctoring System Team",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[candidate_email],
-            fail_silently=False,
+            fail_silently=True,
+        )
+
+        # In-app notification
+        from users.models import Notification
+        Notification.objects.create(
+            user=submission.candidate,
+            title="Results Published",
+            message=f"Your results for {submission.exam.title} have been published. Check 'My Tests' for details.",
+            link=f"/candidate-results/{submission.id}"
         )
         
-        return Response({'message': 'Results published and email sent.'})
+        return Response({'message': 'Results published successfully.'})
 
 class ProctoringLogCreateView(views.APIView):
     permission_classes = [IsAuthenticated]
@@ -643,6 +652,8 @@ class CandidateExamHistoryView(views.APIView):
             else:
                 computed_status = "completed"
 
+            submission = Submission.objects.filter(exam=exam, candidate=request.user).first()
+
             results.append({
                 "id": str(exam.id),
                 "title": exam.title,
@@ -651,6 +662,164 @@ class CandidateExamHistoryView(views.APIView):
                 "duration_minutes": exam.duration_minutes,
                 "status": computed_status,
                 "eligibility_status": eligibility.status,
+                "submission_id": str(submission.id) if submission else None,
+                "submission_status": submission.status if submission else None,
             })
 
         return Response({"results": results})
+
+
+class DisputeViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return self.request.user.raised_disputes.all()
+
+    def get_serializer_class(self):
+        from .serializers import DisputeSerializer
+        return DisputeSerializer
+
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        disputes = self.get_queryset()
+        serializer = self.get_serializer(disputes, many=True)
+        return Response({"results": serializer.data})
+
+    def create(self, request, *args, **kwargs):
+        submission_id = request.data.get('submission_id')
+        question_id = request.data.get('question_id')
+        message = request.data.get('message')
+
+        if not submission_id or not message:
+            return Response({'error': 'submission_id and message are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            submission = Submission.objects.get(id=submission_id, candidate=request.user)
+        except Submission.DoesNotExist:
+            return Response({'error': 'Submission not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if submission.status != 'evaluated':
+            return Response({'error': 'Results must be evaluated before raising a dispute.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from .models import Dispute, Question
+        question = None
+        if question_id:
+            try:
+                question = Question.objects.get(id=question_id, exam=submission.exam)
+            except Question.DoesNotExist:
+                return Response({'error': 'Question not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        dispute = Dispute.objects.create(
+            submission=submission,
+            question=question,
+            raised_by=request.user,
+            message=message
+        )
+        
+        # Email examiner
+        examiner_email = submission.exam.creator.email
+        send_mail(
+            subject=f"New Dispute Raised: {submission.exam.title}",
+            message=f"A new dispute has been raised for {submission.exam.title} by {request.user.full_name}.\n\nMessage:\n{message}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[examiner_email],
+            fail_silently=True,
+        )
+
+        from users.models import Notification
+        Notification.objects.create(
+            user=submission.exam.creator,
+            title="New Dispute Raised",
+            message=f"A new dispute has been raised for {submission.exam.title} by {request.user.full_name}.",
+            link=f"/exams/{submission.exam.id}/disputes"
+        )
+
+        serializer = self.get_serializer(dispute)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class ExaminerDisputeViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request, exam_pk=None):
+        from .models import Exam, Dispute
+        try:
+            exam = Exam.objects.get(id=exam_pk, creator=request.user)
+        except Exam.DoesNotExist:
+            return Response({'error': 'Exam not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        disputes = Dispute.objects.filter(submission__exam=exam).order_by('-created_at')
+        from .serializers import DisputeSerializer
+        serializer = DisputeSerializer(disputes, many=True)
+        return Response({"results": serializer.data})
+
+    def partial_update(self, request, pk=None):
+        from .models import Dispute
+        try:
+            dispute = Dispute.objects.get(id=pk)
+        except Dispute.DoesNotExist:
+            return Response({'error': 'Dispute not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if dispute.submission.exam.creator != request.user:
+            return Response({'error': 'Unauthorized.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        reply = request.data.get('reply')
+        status_val = request.data.get('status')
+
+        if reply is not None:
+            dispute.reply = reply
+            dispute.replied_by = request.user
+            dispute.replied_at = timezone.now()
+        
+        if status_val is not None:
+            dispute.status = status_val
+            
+        dispute.save()
+
+        if reply is not None:
+            candidate_email = dispute.raised_by.email
+            send_mail(
+                subject=f"Reply to your Dispute: {dispute.submission.exam.title}",
+                message=f"The examiner has replied to your dispute for {dispute.submission.exam.title}.\n\nReply:\n{reply}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[candidate_email],
+                fail_silently=True,
+            )
+
+            from users.models import Notification
+            Notification.objects.create(
+                user=dispute.raised_by,
+                title="Dispute Replied",
+                message=f"The examiner has replied to your dispute for {dispute.submission.exam.title}.",
+                link="/my-disputes"
+            )
+
+        from .serializers import DisputeSerializer
+        serializer = DisputeSerializer(dispute)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def resolve(self, request, pk=None):
+        from .models import Dispute
+        try:
+            dispute = Dispute.objects.get(id=pk)
+        except Dispute.DoesNotExist:
+            return Response({'error': 'Dispute not found.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        if dispute.submission.exam.creator != request.user:
+            return Response({'error': 'Unauthorized.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        dispute.status = 'resolved'
+        dispute.save()
+        return Response({'status': 'resolved'})
+
+class CandidateSubmissionDetailView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, submission_id):
+        submission = get_object_or_404(Submission, id=submission_id, candidate=request.user)
+        if submission.status != 'evaluated':
+            raise PermissionDenied("Results are not yet published for this exam.")
+        
+        from .serializers import SubmissionEvaluationSerializer
+        serializer = SubmissionEvaluationSerializer(submission)
+        return Response(serializer.data)

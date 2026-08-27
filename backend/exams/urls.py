@@ -8,10 +8,12 @@ from .views import (
     SubmissionDetailView, AnswerGradingView, PublishResultsView,
     CandidateExamStatusView, ProctoringLogCreateView, ProctoringLogListView,
     ProctoringScreenshotUploadView, AudioUploadView, ExamAudioDetailView,
-    VideoUploadView, ExamVideoDetailView
+    VideoUploadView, ExamVideoDetailView,
+    DisputeViewSet, ExaminerDisputeViewSet, CandidateSubmissionDetailView
 )
 
 router = DefaultRouter()
+router.register(r'disputes', DisputeViewSet, basename='dispute')
 router.register(r'', ExamViewSet, basename='exam')
 
 question_list = QuestionViewSet.as_view({
@@ -60,6 +62,12 @@ urlpatterns = [
     path('<uuid:exam_id>/take/', ExamTakeView.as_view(), name='exam-take'),
     path('submissions/<uuid:submission_id>/answers/', SaveAnswerView.as_view(), name='save-answer'),
     path('submissions/<uuid:submission_id>/submit/', SubmitExamView.as_view(), name='submit-exam'),
+    path('submissions/<uuid:submission_id>/candidate-result/', CandidateSubmissionDetailView.as_view(), name='candidate-submission-result'),
+
+    # Disputes routes
+    path('<uuid:exam_pk>/disputes/', ExaminerDisputeViewSet.as_view({'get': 'list'}), name='exam-disputes'),
+    path('disputes/<uuid:pk>/resolve/', ExaminerDisputeViewSet.as_view({'post': 'resolve'}), name='dispute-resolve'),
+    path('disputes/<uuid:pk>/reply/', ExaminerDisputeViewSet.as_view({'patch': 'partial_update'}), name='dispute-reply'),
     
     # Proctoring routes
     path('proctoring/logs/', ProctoringLogCreateView.as_view(), name='proctoring-log-create'),

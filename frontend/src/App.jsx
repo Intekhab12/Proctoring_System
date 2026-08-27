@@ -18,6 +18,9 @@ import TakeExam from './components/candidate/TakeExam';
 import SubmissionsList from './components/exam/SubmissionsList';
 import GradingPage from './components/exam/GradingPage';
 import MyTests from './components/candidate/MyTests';
+import CandidateResults from './components/candidate/CandidateResults';
+import MyDisputes from './components/candidate/MyDisputes';
+import DisputesList from './components/exam/DisputesList';
 
 const theme = createTheme({
   palette: {
@@ -57,6 +60,9 @@ function App() {
             <Route path="/exams/:id/submissions" element={<PrivateRoute><SubmissionsList /></PrivateRoute>} />
             <Route path="/submissions/:submissionId" element={<PrivateRoute><GradingPage /></PrivateRoute>} />
             <Route path="/my-tests" element={<PrivateRoute><MyTests /></PrivateRoute>} />
+            <Route path="/candidate-results/:submissionId" element={<PrivateRoute><CandidateResults /></PrivateRoute>} />
+            <Route path="/my-disputes" element={<PrivateRoute><MyDisputes /></PrivateRoute>} />
+            <Route path="/exams/:examId/disputes" element={<PrivateRoute><DisputesList /></PrivateRoute>} />
           </Routes>
         </Router>
       </AuthProvider>

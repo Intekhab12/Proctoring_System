@@ -136,13 +136,22 @@ const ExamDetail = () => {
       <Paper sx={{ p: 4 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h4">{exam.title}</Typography>
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={() => navigate(`/exams/${id}/submissions`)}
-          >
-            View Submissions
-          </Button>
+          <Box display="flex" gap={2}>
+            <Button 
+              variant="outlined" 
+              color="warning"
+              onClick={() => navigate(`/exams/${id}/disputes`)}
+            >
+              View Disputes
+            </Button>
+            <Button 
+              variant="contained" 
+              color="primary"
+              onClick={() => navigate(`/exams/${id}/submissions`)}
+            >
+              View Submissions
+            </Button>
+          </Box>
         </Box>
         <Typography variant="body1" color="textSecondary" paragraph>{exam.description}</Typography>
         

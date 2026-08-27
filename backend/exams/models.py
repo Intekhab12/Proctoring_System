@@ -128,3 +128,25 @@ class ExamVideoRecording(models.Model):
     def __str__(self):
         return f"Video Recording for Submission {self.submission.id}"
 
+
+class Dispute(models.Model):
+    STATUS_CHOICES = (
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name='disputes')
+    question = models.ForeignKey(Question, on_delete=models.SET_NULL, null=True, blank=True)
+    raised_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='raised_disputes')
+    message = models.TextField()
+    reply = models.TextField(blank=True, null=True)
+    replied_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='replied_disputes')
+    replied_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Dispute {self.id} for Submission {self.submission.id}"

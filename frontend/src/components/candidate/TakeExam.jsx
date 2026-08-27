@@ -8,10 +8,12 @@ import {
 import examService from '../../api/examService';
 import ProctoringMonitor from './ProctoringMonitor';
 import Whiteboard from './Whiteboard';
+import ExamGuidelines from './ExamGuidelines';
 
 import ysFixWebmDuration from 'fix-webm-duration';
 
 const TakeExam = () => {
+  const [showGuidelines, setShowGuidelines] = useState(false);
   const { examId } = useParams();
   const navigate = useNavigate();
 
@@ -453,6 +455,14 @@ const TakeExam = () => {
   if (!exam) return null;
 
   if (!examStarted) {
+    if (showGuidelines) {
+      return (
+        <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
+          <ExamGuidelines onAccept={startExam} />
+        </Container>
+      );
+    }
+
     return (
       <Container maxWidth="sm" sx={{ mt: 6, mb: 6, textAlign: 'center' }}>
         <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
@@ -524,10 +534,10 @@ const TakeExam = () => {
             variant="contained" 
             size="large" 
             disabled={!preStreamGranted || preStreamLoading}
-            onClick={startExam}
+            onClick={() => setShowGuidelines(true)}
             sx={{ py: 1.5, px: 4, fontSize: '1rem', fontWeight: 'bold' }}
           >
-            Enter Full-Screen & Start Exam
+            Next: Read Guidelines
           </Button>
         </Paper>
       </Container>
