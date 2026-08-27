@@ -31,11 +31,12 @@ const examService = {
   deleteEligibility: (examId, id) => axiosInstance.delete(`/api/exams/${examId}/eligibility/${id}/`),
 
   // Candidate
+  getCandidateExams: () => axiosInstance.get('/api/candidate/exams/'),
   getAvailableExams: () => axiosInstance.get('/api/exams/candidate/available-exams/'),
   getCandidateExamStatus: (examId) => axiosInstance.get(`/api/exams/${examId}/candidate-status/`),
   registerForExam: (examId) => axiosInstance.post(`/api/exams/${examId}/register/`),
   getExamToTake: (examId) => axiosInstance.get(`/api/exams/${examId}/take/`),
-  saveAnswer: (submissionId, questionId, textAnswer) => axiosInstance.post(`/api/exams/submissions/${submissionId}/answers/`, { question_id: questionId, text_answer: textAnswer }),
+  saveAnswer: (submissionId, questionId, textAnswer, whiteboardData) => axiosInstance.post(`/api/exams/submissions/${submissionId}/answers/`, { question_id: questionId, text_answer: textAnswer, whiteboard_data: whiteboardData }),
   submitExam: (submissionId) => axiosInstance.post(`/api/exams/submissions/${submissionId}/submit/`),
 
   // Evaluation

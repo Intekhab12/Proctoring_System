@@ -7,6 +7,9 @@ import {
 } from '@mui/material';
 import examService from '../../api/examService';
 import ProctoringMonitor from './ProctoringMonitor';
+import Whiteboard from './Whiteboard';
+
+import ysFixWebmDuration from 'fix-webm-duration';
 
 const TakeExam = () => {
   const { examId } = useParams();
@@ -18,8 +21,12 @@ const TakeExam = () => {
   const [questions, setQuestions] = useState([]);
   const [submissionId, setSubmissionId] = useState(null);
   
+  // Track recording start time for WebM duration header patch
+  const recordingStartTimeRef = useRef(null);
+  
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
+  const [whiteboardData, setWhiteboardData] = useState({});
   const [saving, setSaving] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
@@ -44,6 +51,13 @@ const TakeExam = () => {
     }
   }, [submissionId]);
 
+  // Pre-Exam Device Verification State
+  const [preStream, setPreStream] = useState(null);
+  const [preStreamGranted, setPreStreamGranted] = useState(false);
+  const [preStreamLoading, setPreStreamLoading] = useState(false);
+  const [preStreamError, setPreStreamError] = useState(null);
+  const previewVideoRef = useRef(null);
+
   // Continuous Single-File Video Recording State
   const [mediaStream, setMediaStream] = useState(null);
   const videoRecorderRef = useRef(null);
@@ -51,62 +65,81 @@ const TakeExam = () => {
   const videoStreamRef = useRef(null);
   const mimeTypeRef = useRef('video/webm');
 
-  // Start continuous full exam video recording when exam starts
+  // Automatically request pre-exam permissions when on pre-exam screen
+  const requestPreExamPermissions = useCallback(async () => {
+    setPreStreamLoading(true);
+    setPreStreamError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: true
+      });
+      setPreStream(stream);
+      setPreStreamGranted(true);
+      videoStreamRef.current = stream;
+    } catch (err) {
+      console.error("Pre-exam permission error:", err);
+      setPreStreamError("Camera and Microphone permissions are required to take this proctored exam. Please allow access in your browser.");
+      setPreStreamGranted(false);
+    } finally {
+      setPreStreamLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!examStarted && !preStreamGranted && !preStreamLoading && !preStreamError) {
+      requestPreExamPermissions();
+    }
+  }, [examStarted, preStreamGranted, preStreamLoading, preStreamError, requestPreExamPermissions]);
+
+  useEffect(() => {
+    if (previewVideoRef.current && preStream) {
+      previewVideoRef.current.srcObject = preStream;
+      previewVideoRef.current.play().catch(() => {});
+    }
+  }, [preStream, examStarted]);
+
+  // Start continuous full exam video recording when exam starts using pre-acquired stream
   useEffect(() => {
     if (!submissionId || !examStarted) return;
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      // Already active — do NOT restart or wipe chunks
+      return;
+    }
 
-    let cancelled = false;
-    const startVideoRecording = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: true
-        });
-        if (cancelled) {
-          stream.getTracks().forEach(t => t.stop());
-          return;
+    const activeStream = mediaStream || preStream;
+    if (!activeStream) return;
+
+    videoStreamRef.current = activeStream;
+
+    let mimeType = 'video/webm;codecs=vp8,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+    mimeTypeRef.current = mimeType;
+
+    try {
+      const recorder = new MediaRecorder(activeStream, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          videoChunksRef.current.push(e.data);
+          console.log(`[TakeExam] 📹 Chunk collected: ${(e.data.size / 1024).toFixed(1)} KB (Total chunks: ${videoChunksRef.current.length})`);
         }
+      };
+      recorder.onerror = (e) => console.error('[TakeExam] MediaRecorder error:', e);
 
-        videoStreamRef.current = stream;
-        setMediaStream(stream);
-        videoChunksRef.current = [];
-
-        let mimeType = 'video/webm;codecs=vp8,opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
-        mimeTypeRef.current = mimeType;
-
-        const recorder = new MediaRecorder(stream, { mimeType });
-        recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            videoChunksRef.current.push(e.data);
-            console.log(`[TakeExam] 📹 Chunk collected: ${(e.data.size / 1024).toFixed(1)} KB (Total chunks: ${videoChunksRef.current.length})`);
-          }
-        };
-        recorder.onerror = (e) => console.error('[TakeExam] MediaRecorder error:', e);
-
-        recorder.start(1000); // Collect slice every 1 second
-        videoRecorderRef.current = recorder;
-        console.log('[TakeExam] Full exam video recording started with mimeType:', mimeType);
-
-      } catch (err) {
-        console.error('[TakeExam] Failed to start full video recording', err);
+      if (!recordingStartTimeRef.current) {
+        const nowTs = Date.now();
+        recordingStartTimeRef.current = nowTs;
+        localStorage.setItem(`recording_start_${submissionId}`, nowTs.toString());
       }
-    };
+      recorder.start(1000); // Collect slice every 1 second
+      videoRecorderRef.current = recorder;
+      console.log('[TakeExam] Full exam video recording started successfully');
 
-    startVideoRecording();
-
-    return () => {
-      cancelled = true;
-      if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
-        try { videoRecorderRef.current.stop(); } catch (e) {}
-      }
-      if (videoStreamRef.current) {
-        videoStreamRef.current.getTracks().forEach(t => t.stop());
-        videoStreamRef.current = null;
-      }
-    };
-  }, [submissionId, examStarted]);
+    } catch (err) {
+      console.error('[TakeExam] Failed to start full video recording', err);
+    }
+  }, [submissionId, examStarted, mediaStream, preStream]);
 
   // Helper to stop recording and upload the complete video blob
   const finalizeAndUploadVideo = async (subId) => {
@@ -117,23 +150,51 @@ const TakeExam = () => {
             videoRecorderRef.current.requestData();
           }
         } catch (e) {}
-        await new Promise((resolve) => {
-          videoRecorderRef.current.onstop = resolve;
-          try {
-            videoRecorderRef.current.stop();
-          } catch (e) {
-            resolve();
-          }
-        });
+
+        await Promise.race([
+          new Promise((resolve) => {
+            if (!videoRecorderRef.current || videoRecorderRef.current.state === 'inactive') {
+              return resolve();
+            }
+            videoRecorderRef.current.onstop = () => {
+              // Flush chunk buffer tick
+              setTimeout(resolve, 200);
+            };
+            try {
+              videoRecorderRef.current.stop();
+            } catch (e) {
+              resolve();
+            }
+          }),
+          new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
       }
 
-      if (videoChunksRef.current.length > 0) {
-        const fullBlob = new Blob(videoChunksRef.current, { type: mimeTypeRef.current });
-        console.log(`[TakeExam] Uploading full video recording (${(fullBlob.size / (1024 * 1024)).toFixed(2)} MB)...`);
+      if (videoChunksRef.current && videoChunksRef.current.length > 0) {
+        const rawBlob = new Blob(videoChunksRef.current, { type: mimeTypeRef.current });
+        const savedStart = Number(localStorage.getItem(`recording_start_${subId}`));
+        const startTs = recordingStartTimeRef.current || savedStart || (Date.now() - 10000);
+        const durationMs = Math.max(2000, Date.now() - startTs);
+
+        let finalBlob = rawBlob;
+        if (durationMs > 0 && mimeTypeRef.current.includes('webm')) {
+          try {
+            finalBlob = await new Promise((resolve) => {
+              ysFixWebmDuration(rawBlob, durationMs, (fixedBlob) => {
+                resolve(fixedBlob);
+              });
+            });
+            console.log(`[TakeExam] Fixed WebM metadata duration header to ${durationMs} ms (${(durationMs / 1000).toFixed(1)}s)`);
+          } catch (e) {
+            console.warn('[TakeExam] WebM duration patching warning:', e);
+          }
+        }
+
+        console.log(`[TakeExam] Uploading full video recording (${(finalBlob.size / (1024 * 1024)).toFixed(2)} MB, duration: ${(durationMs / 1000).toFixed(1)}s)...`);
         
         const formData = new FormData();
         formData.append('submission_id', subId);
-        formData.append('video', fullBlob, `full_exam_video_${Date.now()}.webm`);
+        formData.append('video', finalBlob, `full_exam_video_${Date.now()}.webm`);
 
         await examService.uploadFullVideo(formData);
         console.log('[TakeExam] Full video recording uploaded successfully');
@@ -150,16 +211,20 @@ const TakeExam = () => {
     }
   };
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleAutoSubmit = useCallback(async (msg = "Time's up! Exam auto-submitted.") => {
+    setSubmitting(true);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(e => console.error(e));
+    }
     try {
       await finalizeAndUploadVideo(submissionId);
       await examService.submitExam(submissionId);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(e => console.error(e));
-      }
       navigate('/dashboard', { state: { message: msg }});
     } catch (err) {
       console.error(err);
+      setSubmitting(false);
     }
   }, [submissionId, navigate]);
 
@@ -192,10 +257,14 @@ const TakeExam = () => {
     setToastOpen(true);
 
     try {
+      const videoOffsetSec = recordingStartTimeRef.current
+        ? Math.max(0, Math.floor((Date.now() - recordingStartTimeRef.current) / 1000))
+        : 0;
+
       const formData = new FormData();
       formData.append('submission_id', submissionId);
       formData.append('event_type', eventType);
-      formData.append('details', JSON.stringify({ ...details, attempt: newCount }));
+      formData.append('details', JSON.stringify({ ...details, attempt: newCount, video_offset_sec: videoOffsetSec }));
       if (blob && blob instanceof Blob) {
         formData.append('evidence', blob, 'evidence.webm');
       }
@@ -253,6 +322,9 @@ const TakeExam = () => {
         if (res.data.answers) {
           setAnswers(res.data.answers);
         }
+        if (res.data.whiteboard_data) {
+          setWhiteboardData(res.data.whiteboard_data);
+        }
 
         const startedAt = new Date(res.data.started_at).getTime();
         const durationMs = res.data.exam.duration_minutes * 60 * 1000;
@@ -291,22 +363,27 @@ const TakeExam = () => {
   }, [timeLeft, handleAutoSubmit]);
 
   const handleManualSubmit = async () => {
+    setSubmitDialogOpen(false);
+    setSubmitting(true);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(e => console.error(e));
+    }
     try {
       await finalizeAndUploadVideo(submissionId);
       await examService.submitExam(submissionId);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(e => console.error(e));
-      }
+      console.log("[TakeExam] Submission complete, redirecting to dashboard");
       navigate('/dashboard', { state: { message: "Exam submitted successfully." }});
     } catch (err) {
       console.error("Submit failed", err);
+      alert("Submission error: " + (err.response?.data?.detail || err.message));
+      setSubmitting(false);
     }
   };
 
-  const saveAnswer = async (qId, text) => {
+  const saveAnswer = async (qId, text, wbData) => {
     setSaving(true);
     try {
-      await examService.saveAnswer(submissionId, qId, text);
+      await examService.saveAnswer(submissionId, qId, text, wbData);
     } catch (err) {
       console.error("Failed to save answer", err);
     } finally {
@@ -318,16 +395,13 @@ const TakeExam = () => {
     const text = e.target.value;
     const qId = questions[currentIndex].id;
     
-    setAnswers(prev => ({
-      ...prev,
-      [qId]: text
-    }));
+    setAnswers(prev => ({ ...prev, [qId]: text }));
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     saveTimeoutRef.current = setTimeout(() => {
-      saveAnswer(qId, text);
+      saveAnswer(qId, text, whiteboardData[qId]);
     }, 1000);
   };
 
@@ -340,15 +414,39 @@ const TakeExam = () => {
   };
 
   const startExam = async () => {
-    try {
-      await document.documentElement.requestFullscreen();
-      setIsFullscreenActive(true);
-      setExamStarted(true);
-    } catch (err) {
-      console.error(`Fullscreen error: ${err.message}`);
-      alert("You must allow full-screen to start the exam.");
+    if (!preStreamGranted || !preStream) {
+      alert("Please grant camera and microphone access before starting the exam.");
+      return;
     }
+    setMediaStream(preStream);
+    setExamStarted(true);
+    setIsFullscreenActive(true);
+
+    setTimeout(() => {
+      const container = document.getElementById('exam-fullscreen-container') || document.documentElement;
+      if (container && container.requestFullscreen) {
+        container.requestFullscreen().catch(err => {
+          console.error(`Fullscreen error: ${err.message}`);
+        });
+      }
+    }, 50);
   };
+
+  if (submitting) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 10, textAlign: 'center' }}>
+        <Paper sx={{ p: 5, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+          <CircularProgress size={48} sx={{ mb: 3 }} />
+          <Typography variant="h5" fontWeight="bold" gutterBottom>
+            Submitting Your Exam...
+          </Typography>
+          <Typography variant="body1" color="textSecondary">
+            Uploading full proctoring video and recording logs. Please do not close or refresh this page.
+          </Typography>
+        </Paper>
+      </Container>
+    );
+  }
 
   if (loading) return <Box mt={4} display="flex" justifyContent="center"><CircularProgress /></Box>;
   if (error) return <Container><Box mt={4}><Typography color="error">{error}</Typography><Button onClick={() => navigate('/dashboard')} sx={{mt: 2}}>Back to Dashboard</Button></Box></Container>;
@@ -356,15 +454,79 @@ const TakeExam = () => {
 
   if (!examStarted) {
     return (
-      <Container maxWidth="sm" sx={{ mt: 10, textAlign: 'center' }}>
-        <Paper sx={{ p: 4 }}>
-          <Typography variant="h5" gutterBottom>Ready to start {exam.title}?</Typography>
-          <Typography variant="body1" mb={4} color="textSecondary">
-            This exam is proctored using AI. You must grant access to your camera and microphone when prompted.
-            You must remain in full-screen mode and cannot switch tabs or minimize the window.
-            Violations will be recorded. Excessive violations (15 or more) will result in automatic submission.
+      <Container maxWidth="sm" sx={{ mt: 6, mb: 6, textAlign: 'center' }}>
+        <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+          <Typography variant="h5" fontWeight="bold" gutterBottom>
+            Ready to start {exam.title}?
           </Typography>
-          <Button variant="contained" size="large" onClick={startExam}>
+          <Typography variant="body2" color="textSecondary" mb={3}>
+            This exam is proctored using AI. Please verify your camera and microphone below before starting.
+          </Typography>
+
+          {/* Camera & Mic Pre-Exam Device Verification Box */}
+          <Box sx={{ my: 3, p: 2.5, border: '1px solid #e0e0e0', borderRadius: 2, bgcolor: '#fafafa' }}>
+            <Typography variant="subtitle2" fontWeight="bold" mb={1.5}>
+              📷 Device Verification & Live Camera Preview
+            </Typography>
+
+            {preStreamLoading && (
+              <Box display="flex" flexDirection="column" alignItems="center" py={3}>
+                <CircularProgress size={32} />
+                <Typography variant="body2" color="textSecondary" mt={1}>
+                  Requesting camera & microphone access...
+                </Typography>
+              </Box>
+            )}
+
+            {preStreamError && (
+              <Box py={2}>
+                <Alert severity="error" sx={{ mb: 2 }}>{preStreamError}</Alert>
+                <Button variant="outlined" size="small" onClick={requestPreExamPermissions}>
+                  Retry Permission Request
+                </Button>
+              </Box>
+            )}
+
+            {preStreamGranted && (
+              <Box display="flex" flexDirection="column" alignItems="center">
+                <Box 
+                  sx={{ 
+                    width: 240, 
+                    height: 180, 
+                    bgcolor: '#000', 
+                    borderRadius: 2, 
+                    overflow: 'hidden', 
+                    mb: 1.5,
+                    border: '2px solid #4caf50',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  }}
+                >
+                  <video 
+                    ref={previewVideoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                </Box>
+                <Alert severity="success" sx={{ py: 0.5, px: 2, fontSize: '0.85rem' }}>
+                  ✓ Camera & Microphone Verified
+                </Alert>
+              </Box>
+            )}
+          </Box>
+
+          <Typography variant="caption" display="block" color="textSecondary" mb={3}>
+            ⚠ Note: Full-screen mode is mandatory. Switching tabs, minimizing windows, or face mismatches will be logged as violations.
+          </Typography>
+
+          <Button 
+            variant="contained" 
+            size="large" 
+            disabled={!preStreamGranted || preStreamLoading}
+            onClick={startExam}
+            sx={{ py: 1.5, px: 4, fontSize: '1rem', fontWeight: 'bold' }}
+          >
             Enter Full-Screen & Start Exam
           </Button>
         </Paper>
@@ -395,13 +557,14 @@ const TakeExam = () => {
   const qId = currentQuestion?.id;
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 2, mb: 4, height: '85vh', display: 'flex', flexDirection: 'column' }}>
-      
-      {/* Proctoring Monitor handles AI detection using single shared media stream */}
-      <ProctoringMonitor stream={mediaStream} isActive={examStarted} onViolation={logProctoringEvent} />
+    <Box id="exam-fullscreen-container" sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', width: '100vw', boxSizing: 'border-box', p: 2, overflowY: 'auto' }}>
+      <Container maxWidth="xl" sx={{ height: '88vh', display: 'flex', flexDirection: 'column' }}>
+        
+        {/* Proctoring Monitor handles AI detection using single shared media stream */}
+        <ProctoringMonitor stream={mediaStream} isActive={examStarted} onViolation={logProctoringEvent} />
 
-      {/* Header Bar */}
-      <Paper sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        {/* Header Bar */}
+        <Paper sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box display="flex" alignItems="center" gap={2}>
           <Typography variant="h5">{exam.title}</Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#e8f5e9', color: '#2e7d32', px: 1.5, py: 0.5, borderRadius: 1 }}>
@@ -451,10 +614,21 @@ const TakeExam = () => {
                   variant="outlined"
                   value={answers[qId] || ''}
                   onChange={handleAnswerChange}
-                  sx={{ mt: 'auto' }}
+                  sx={{ mt: 3, mb: 3 }}
                   placeholder="Type your answer here..."
                 />
 
+                <Whiteboard
+                  questionId={qId}
+                  savedData={whiteboardData[qId] || null}
+                  onSave={(id, dataUrl) => {
+                    setWhiteboardData(prev => ({ ...prev, [id]: dataUrl }));
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    saveTimeoutRef.current = setTimeout(() => {
+                      saveAnswer(id, answers[id] || '', dataUrl);
+                    }, 1000);
+                  }}
+                />
                 <Box display="flex" justifyContent="space-between" mt={3}>
                   <Button 
                     variant="outlined" 
@@ -538,7 +712,11 @@ const TakeExam = () => {
       </Grid>
 
       {/* Submit Confirmation Modal */}
-      <Dialog open={submitDialogOpen} onClose={() => setSubmitDialogOpen(false)}>
+      <Dialog 
+        open={submitDialogOpen} 
+        onClose={() => setSubmitDialogOpen(false)}
+        container={() => document.getElementById('exam-fullscreen-container') || document.body}
+      >
         <DialogTitle>Submit Exam</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -557,13 +735,16 @@ const TakeExam = () => {
         open={toastOpen} 
         autoHideDuration={6000} 
         onClose={() => setToastOpen(false)} 
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        PortalProps={{ container: () => document.getElementById('exam-fullscreen-container') || document.body }}
+        sx={{ mt: 8 }}
       >
         <Alert onClose={() => setToastOpen(false)} severity={toastSeverity} sx={{ width: '100%', fontSize: '1.1rem' }}>
           {proctoringMessage}
         </Alert>
       </Snackbar>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

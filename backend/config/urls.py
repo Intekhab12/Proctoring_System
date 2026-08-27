@@ -3,9 +3,12 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from exams.views import CandidateExamHistoryView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('users.urls')),
+    path('api/candidate/exams/', CandidateExamHistoryView.as_view(), name='candidate-exams-direct'),
     path('api/exams/', include('exams.urls')),
 ]
 

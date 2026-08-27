@@ -171,7 +171,7 @@ const ProctoringMonitor = ({ stream, onViolation, isActive }) => {
 
   // 2. Setup Media Stream & Proctoring Loops
   useEffect(() => {
-    if (!isActive || loadingModels) {
+    if (!isActive) {
       cleanup();
       return;
     }
@@ -525,15 +525,6 @@ const ProctoringMonitor = ({ stream, onViolation, isActive }) => {
 
   return (
     <>
-      {(loadingModels || initializing) && (
-        <Backdrop open={true} sx={{ color: '#fff', zIndex: 9999, flexDirection: 'column' }}>
-          <CircularProgress color="inherit" />
-          <Typography mt={2}>
-            {loadingModels ? "Loading AI Vision & Proctoring Models..." : "Acquiring Camera and Microphone permissions..."}
-          </Typography>
-        </Backdrop>
-      )}
-
       {hasMediaError && (
         <Backdrop open={true} sx={{ color: '#fff', zIndex: 9999, flexDirection: 'column', bgcolor: 'rgba(211,47,47,0.85)' }}>
           <Typography variant="h6">⚠ Camera & Microphone Access Required</Typography>
@@ -553,7 +544,7 @@ const ProctoringMonitor = ({ stream, onViolation, isActive }) => {
         boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
         border: '2px solid #1976d2',
         bgcolor: '#000',
-        display: (loadingModels || initializing || hasMediaError) ? 'none' : 'block'
+        display: hasMediaError ? 'none' : 'block'
       }}>
         <video 
           ref={videoRef} 

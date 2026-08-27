@@ -17,7 +17,7 @@ from .serializers import (
 )
 from .permissions import IsExaminer, IsExamCreator
 from django.core.mail import send_mail
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from .utils import notify_candidate
 
 class ExamViewSet(viewsets.ModelViewSet):
@@ -324,6 +324,7 @@ class ExamTakeView(views.APIView):
         # Get existing answers
         existing_answers = Answer.objects.filter(submission=submission)
         answers_dict = {str(a.question.id): a.text_answer for a in existing_answers}
+        whiteboard_dict = {str(a.question.id): a.whiteboard_data for a in existing_answers if a.whiteboard_data}
         
         q_data = [{
             'id': str(q.id),
@@ -342,7 +343,8 @@ class ExamTakeView(views.APIView):
             'submission_id': str(submission.id),
             'started_at': submission.started_at,
             'questions': q_data,
-            'answers': answers_dict
+            'answers': answers_dict,
+            'whiteboard_data': whiteboard_dict
         })
 
 class SaveAnswerView(views.APIView):
@@ -351,6 +353,7 @@ class SaveAnswerView(views.APIView):
     def post(self, request, submission_id):
         question_id = request.data.get('question_id')
         text_answer = request.data.get('text_answer', '')
+        whiteboard_data = request.data.get('whiteboard_data')
 
         try:
             submission = Submission.objects.get(id=submission_id, candidate=request.user)
@@ -368,10 +371,15 @@ class SaveAnswerView(views.APIView):
         answer, created = Answer.objects.get_or_create(
             submission=submission, 
             question=question,
-            defaults={'text_answer': text_answer}
+            defaults={
+                'text_answer': text_answer,
+                'whiteboard_data': whiteboard_data
+            }
         )
         if not created:
             answer.text_answer = text_answer
+            if whiteboard_data is not None:
+                answer.whiteboard_data = whiteboard_data
             answer.save()
             
         return Response({'message': 'Answer saved.'})
@@ -565,11 +573,7 @@ class VideoUploadView(views.APIView):
             submission=submission,
             defaults={'video_file': video_file}
         )
-        # Also populate full_audio_recording so audio player tab is populated
-        ExamAudioRecording.objects.update_or_create(
-            submission=submission,
-            defaults={'audio_file': video_file}
-        )
+
         return Response({
             'message': 'Video recording uploaded successfully',
             'id': str(recording.id),
@@ -613,3 +617,40 @@ class ExamAudioDetailView(views.APIView):
             'audio_url': request.build_absolute_uri(recording.audio_file.url),
             'uploaded_at': recording.uploaded_at
         })
+
+class CandidateExamHistoryView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        eligibilities = ExamEligibility.objects.filter(
+            Q(candidate=request.user) | Q(email=request.user.email)
+        ).select_related('exam').order_by('-exam__start_time')
+
+        results = []
+        seen_exam_ids = set()
+
+        for eligibility in eligibilities:
+            exam = eligibility.exam
+            if not exam or exam.id in seen_exam_ids:
+                continue
+            seen_exam_ids.add(exam.id)
+
+            if now < exam.start_time:
+                computed_status = "upcoming"
+            elif exam.start_time <= now <= exam.end_time:
+                computed_status = "ongoing"
+            else:
+                computed_status = "completed"
+
+            results.append({
+                "id": str(exam.id),
+                "title": exam.title,
+                "start_time": exam.start_time.isoformat(),
+                "end_time": exam.end_time.isoformat(),
+                "duration_minutes": exam.duration_minutes,
+                "status": computed_status,
+                "eligibility_status": eligibility.status,
+            })
+
+        return Response({"results": results})

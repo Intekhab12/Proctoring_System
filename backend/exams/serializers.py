@@ -40,8 +40,8 @@ class AnswerEvaluationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Answer
-        fields = ['id', 'question', 'text_answer', 'marks_awarded', 'feedback', 'created_at']
-        read_only_fields = ['id', 'question', 'text_answer', 'created_at']
+        fields = ['id', 'question', 'text_answer', 'whiteboard_data', 'marks_awarded', 'feedback', 'created_at']
+        read_only_fields = ['id', 'question', 'text_answer', 'whiteboard_data', 'created_at']
 
 class SubmissionEvaluationSerializer(serializers.ModelSerializer):
     candidate = CandidateSimpleSerializer(read_only=True)

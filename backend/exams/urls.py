@@ -53,6 +53,7 @@ urlpatterns = [
     path('<uuid:exam_pk>/eligibility/<uuid:pk>/', eligibility_detail, name='exam-eligibility-detail'),
     
     # Candidate routes
+    path('candidate/exams/', views.CandidateExamHistoryView.as_view(), name='candidate-exams-history'),
     path('candidate/available-exams/', AvailableExamsView.as_view(), name='candidate-available-exams'),
     path('<uuid:exam_id>/candidate-status/', CandidateExamStatusView.as_view(), name='candidate-status'),
     path('<uuid:exam_id>/register/', ExamRegistrationView.as_view(), name='exam-register'),

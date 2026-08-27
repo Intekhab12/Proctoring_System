@@ -50,6 +50,17 @@
   }
 }
 
+/* Force light background in Fullscreen & Incognito Mode to prevent black screen */
+:fullscreen, ::backdrop, :root:fullscreen {
+  background-color: #f4f6f8 !important;
+  color: #1a1a1a !important;
+}
+
+html, body, #root {
+  background-color: #f4f6f8 !important;
+  min-height: 100vh;
+}
+
 body {
   margin: 0;
 }

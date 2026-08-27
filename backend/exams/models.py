@@ -83,6 +83,8 @@ class Answer(models.Model):
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name='answers')
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='answers')
     text_answer = models.TextField(blank=True, null=True)
+    whiteboard_data = models.TextField(blank=True, null=True)
+    score = models.IntegerField(null=True, blank=True)
     marks_awarded = models.IntegerField(null=True, blank=True)
     feedback = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

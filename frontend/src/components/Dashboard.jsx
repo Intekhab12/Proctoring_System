@@ -44,9 +44,14 @@ const Dashboard = () => {
             <Divider sx={{ my: 3 }} />
 
             <Box>
-              <Typography variant="h6" mb={1}>
-                Candidate Dashboard
-              </Typography>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography variant="h6">
+                  Candidate Dashboard
+                </Typography>
+                <Button variant="outlined" color="primary" onClick={() => navigate('/my-tests')}>
+                  My Tests History
+                </Button>
+              </Box>
               
               <Typography variant="subtitle1" mt={2} mb={1}>Pending Invitations ({availableExams.length})</Typography>
               <List>

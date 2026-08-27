@@ -1,13 +1,14 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppBar, Toolbar, Typography, Button, Box, Avatar, IconButton, Badge, Menu, MenuItem, ListItemText } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import notificationService from '../../api/notificationService';
 
 const Navbar = () => {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [notifications, setNotifications] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
 
@@ -18,6 +19,10 @@ const Navbar = () => {
         .catch(err => console.error("Failed to load notifications", err));
     }
   }, [user]);
+
+  if (location.pathname.startsWith('/exam/take/')) {
+    return null;
+  }
 
   const handleLogout = () => {
     logout();
@@ -57,6 +62,7 @@ const Navbar = () => {
         {user ? (
           <Box display="flex" alignItems="center" gap={2}>
             <Button color="inherit" onClick={() => navigate('/exams')}>Exams</Button>
+            <Button color="inherit" onClick={() => navigate('/my-tests')}>My Tests</Button>
             
             <IconButton color="inherit" onClick={handleOpenMenu}>
               <Badge badgeContent={unreadCount} color="error">
