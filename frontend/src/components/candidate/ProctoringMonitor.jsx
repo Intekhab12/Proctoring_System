@@ -22,7 +22,7 @@ import * as faceapi from 'face-api.js';
  *    - Runs every 10 seconds: euclidean distance > 0.6 -> face_mismatch.
  *    - Head pose/rotation estimation > 30 deg -> head_turned.
  */
-const ProctoringMonitor = ({ stream, onViolation, isActive }) => {
+const ProctoringMonitor = ({ stream, onViolation, isActive, inline = false }) => {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -532,20 +532,33 @@ const ProctoringMonitor = ({ stream, onViolation, isActive }) => {
         </Backdrop>
       )}
 
-      <Box sx={{ 
-        position: 'fixed', 
-        bottom: 20, 
-        right: 20, 
-        width: 180, 
-        height: 135, 
-        zIndex: 9998, 
-        borderRadius: 2, 
-        overflow: 'hidden', 
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-        border: '2px solid #1976d2',
-        bgcolor: '#000',
-        display: hasMediaError ? 'none' : 'block'
-      }}>
+      <Box sx={
+        inline ? {
+          width: '100%',
+          aspectRatio: '4/3',
+          mt: 2,
+          borderRadius: 2,
+          overflow: 'hidden',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          border: '2px solid #1976d2',
+          bgcolor: '#000',
+          display: hasMediaError ? 'none' : 'block',
+          position: 'relative'
+        } : { 
+          position: 'fixed', 
+          bottom: 20, 
+          right: 20, 
+          width: 180, 
+          height: 135, 
+          zIndex: 9998, 
+          borderRadius: 2, 
+          overflow: 'hidden', 
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          border: '2px solid #1976d2',
+          bgcolor: '#000',
+          display: hasMediaError ? 'none' : 'block'
+        }
+      }>
         <video 
           ref={videoRef} 
           width="640"

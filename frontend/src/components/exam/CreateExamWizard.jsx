@@ -78,6 +78,16 @@ const CreateExamWizard = () => {
           await examService.uploadEligibilityCSV(examId, csvFile);
         }
       } else if (activeStep === 2) {
+        // Clear existing questions to prevent duplicates if user navigates back and forth
+        try {
+          const existing = await examService.getQuestions(examId);
+          for (let eq of existing.data) {
+            await examService.deleteQuestion(examId, eq.id);
+          }
+        } catch (e) {
+          console.error("Failed to clear existing questions", e);
+        }
+
         // Bulk Add Questions (without images for simplicity in bulk, or individual with images)
         // For simplicity in this demo, we'll post them individually so we can support images
         for (let i=0; i<questions.length; i++) {
@@ -134,16 +144,33 @@ const CreateExamWizard = () => {
             <TextField fullWidth label="Description" multiline rows={3} value={basicInfo.description} onChange={e => setBasicInfo({...basicInfo, description: e.target.value})} variant="outlined" />
             
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 3 }}>
-              <TextField fullWidth label="Duration (minutes)" type="number" value={basicInfo.duration_minutes} onChange={e => setBasicInfo({...basicInfo, duration_minutes: e.target.value})} required variant="outlined" />
+              <Box>
+                <Typography variant="caption" color="textSecondary" sx={{ mb: 0.5, display: 'block' }}>Duration (minutes) *</Typography>
+                <TextField fullWidth type="number" value={basicInfo.duration_minutes} onChange={e => setBasicInfo({...basicInfo, duration_minutes: e.target.value})} required variant="outlined" />
+              </Box>
               
               <Box>
                 <Typography variant="caption" color="textSecondary" sx={{ mb: 0.5, display: 'block' }}>Start Time *</Typography>
-                <TextField fullWidth type="datetime-local" value={basicInfo.start_time} onChange={e => setBasicInfo({...basicInfo, start_time: e.target.value})} required variant="outlined" />
+                <TextField 
+                  fullWidth 
+                  type="datetime-local" 
+                  value={basicInfo.start_time} 
+                  onChange={e => setBasicInfo({...basicInfo, start_time: e.target.value})} 
+                  required 
+                  variant="outlined" 
+                />
               </Box>
 
               <Box>
                 <Typography variant="caption" color="textSecondary" sx={{ mb: 0.5, display: 'block' }}>End Time *</Typography>
-                <TextField fullWidth type="datetime-local" value={basicInfo.end_time} onChange={e => setBasicInfo({...basicInfo, end_time: e.target.value})} required variant="outlined" />
+                <TextField 
+                  fullWidth 
+                  type="datetime-local" 
+                  value={basicInfo.end_time} 
+                  onChange={e => setBasicInfo({...basicInfo, end_time: e.target.value})} 
+                  required 
+                  variant="outlined" 
+                />
               </Box>
             </Box>
 

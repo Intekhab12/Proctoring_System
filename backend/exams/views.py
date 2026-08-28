@@ -15,7 +15,9 @@ from .serializers import (
     SubmissionEvaluationSerializer, AnswerEvaluationSerializer,
     ProctoringLogSerializer
 )
-from .permissions import IsExaminer, IsExamCreator
+from django.contrib.auth import get_user_model
+User = get_user_model()
+from .permissions import IsExaminer, IsExamCreator, IsCandidate
 from django.core.mail import send_mail
 from django.db.models import Sum, Q
 from .utils import notify_candidate
@@ -102,6 +104,10 @@ class ExamEligibilityViewSet(viewsets.ModelViewSet):
         exam = get_object_or_404(Exam, id=exam_id, creator=self.request.user)
         email = request.data.get('email')
         
+        # Check if email belongs to an examiner
+        if User.objects.filter(email=email, is_examiner=True).exists():
+            return Response({'error': 'Cannot add an examiner as a candidate.'}, status=status.HTTP_400_BAD_REQUEST)
+        
         if ExamEligibility.objects.filter(exam=exam, email=email).exists():
             return Response({'message': 'Candidate already added.'}, status=status.HTTP_200_OK)
             
@@ -156,6 +162,10 @@ class ExamEligibilityViewSet(viewsets.ModelViewSet):
                     handle = row[handle_idx].strip() if handle_idx is not None and len(row) > handle_idx else ''
                     
                     if email:
+                        # Skip examiners
+                        if User.objects.filter(email=email, is_examiner=True).exists():
+                            continue
+                            
                         # Use get_or_create to avoid duplicates for the same exam
                         obj, created = ExamEligibility.objects.get_or_create(
                             exam=exam,
@@ -173,7 +183,7 @@ class ExamEligibilityViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ExamRegistrationView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def post(self, request, exam_id):
         user = request.user
@@ -220,7 +230,7 @@ class ExamRegistrationView(views.APIView):
 
 
 class AvailableExamsView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def get(self, request):
         user = request.user
@@ -262,8 +272,8 @@ class AvailableExamsView(views.APIView):
         })
 
 class CandidateExamStatusView(views.APIView):
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, IsCandidate]
+
     def get(self, request, exam_id):
         user = request.user
         try:
@@ -280,6 +290,7 @@ class CandidateExamStatusView(views.APIView):
                 'start_time': exam.start_time,
                 'end_time': exam.end_time,
                 'duration_minutes': exam.duration_minutes,
+                'description': exam.description,
                 'is_published': exam.is_published
             },
             'is_eligible': eligibility is not None,
@@ -289,7 +300,7 @@ class CandidateExamStatusView(views.APIView):
         return Response(status_info)
 
 class ExamTakeView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def get(self, request, exam_id):
         try:
@@ -336,6 +347,7 @@ class ExamTakeView(views.APIView):
             'exam': {
                 'id': str(exam.id),
                 'title': exam.title,
+                'description': exam.description,
                 'duration_minutes': exam.duration_minutes,
                 'start_time': exam.start_time,
                 'end_time': exam.end_time
@@ -348,7 +360,7 @@ class ExamTakeView(views.APIView):
         })
 
 class SaveAnswerView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def post(self, request, submission_id):
         question_id = request.data.get('question_id')
@@ -385,7 +397,7 @@ class SaveAnswerView(views.APIView):
         return Response({'message': 'Answer saved.'})
 
 class SubmitExamView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def post(self, request, submission_id):
         try:
@@ -477,7 +489,7 @@ class PublishResultsView(views.APIView):
         return Response({'message': 'Results published successfully.'})
 
 class ProctoringLogCreateView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def post(self, request):
         import json
@@ -508,7 +520,7 @@ class ProctoringLogCreateView(views.APIView):
         return Response({'message': 'Log created successfully', 'id': log.id}, status=status.HTTP_201_CREATED)
 
 class ProctoringScreenshotUploadView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCandidate]
 
     def post(self, request):
         submission_id = request.data.get('submission_id')
@@ -531,44 +543,38 @@ class ProctoringScreenshotUploadView(views.APIView):
         return Response({'message': 'Evidence uploaded successfully', 'url': log.evidence.url if log.evidence else None}, status=status.HTTP_201_CREATED)
 
 class AudioUploadView(views.APIView):
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [IsAuthenticated, IsCandidate]
+    
     def post(self, request):
         submission_id = request.data.get('submission_id')
         audio_file = request.FILES.get('audio')
-
+        
         if not submission_id or not audio_file:
-            return Response({'error': 'submission_id and audio are required'}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({'error': 'Missing submission_id or audio file'}, status=status.HTTP_400_BAD_REQUEST)
+            
         submission = get_object_or_404(Submission, id=submission_id, candidate=request.user)
-
-        recording, created = ExamAudioRecording.objects.update_or_create(
+        
+        # We append rather than overwrite since chunks come in periodically
+        recording = ExamAudioRecording(
             submission=submission,
-            defaults={'audio_file': audio_file}
+            audio_file=audio_file
         )
-        return Response({
-            'message': 'Full audio recording uploaded successfully',
-            'id': str(recording.id),
-            'audio_url': request.build_absolute_uri(recording.audio_file.url) if recording.audio_file else None
-        }, status=status.HTTP_201_CREATED)
+        recording.save()
+        
+        return Response({'message': 'Audio uploaded successfully'}, status=status.HTTP_201_CREATED)
 
 class ProctoringLogListView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsExaminer]
 
     def get(self, request, submission_id):
-        submission = get_object_or_404(Submission, id=submission_id)
-        
-        # Only the exam creator can view the logs
-        if submission.exam.creator != request.user:
-            raise PermissionDenied("Only the exam creator can view proctoring logs.")
-            
-        logs = submission.proctoring_logs.all().order_by('timestamp')
+        submission = get_object_or_404(Submission, id=submission_id, exam__creator=request.user)
+        logs = ProctoringLog.objects.filter(submission=submission).order_by('-timestamp')
         serializer = ProctoringLogSerializer(logs, many=True)
         return Response(serializer.data)
 
 class VideoUploadView(views.APIView):
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [IsAuthenticated, IsCandidate]
+    
     def post(self, request):
         submission_id = request.data.get('submission_id')
         video_file = request.FILES.get('video')

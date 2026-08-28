@@ -61,9 +61,15 @@ const Navbar = () => {
         </Typography>
         {user ? (
           <Box display="flex" alignItems="center" gap={2}>
-            <Button color="inherit" onClick={() => navigate('/exams')}>Exams</Button>
-            <Button color="inherit" onClick={() => navigate('/my-tests')}>My Tests</Button>
-            <Button color="inherit" onClick={() => navigate('/my-disputes')}>My Disputes</Button>
+            {user?.is_examiner && (
+              <Button color="inherit" onClick={() => navigate('/exams')}>Exams</Button>
+            )}
+            {user?.is_candidate && (
+              <>
+                <Button color="inherit" onClick={() => navigate('/my-tests')}>My Tests</Button>
+                <Button color="inherit" onClick={() => navigate('/my-disputes')}>My Disputes</Button>
+              </>
+            )}
             
             <IconButton color="inherit" onClick={handleOpenMenu}>
               <Badge badgeContent={unreadCount} color="error">

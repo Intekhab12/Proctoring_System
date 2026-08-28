@@ -5,6 +5,7 @@ import {
   CircularProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText,
   Snackbar, Alert
 } from '@mui/material';
+import BrushIcon from '@mui/icons-material/Brush';
 import examService from '../../api/examService';
 import ProctoringMonitor from './ProctoringMonitor';
 import Whiteboard from './Whiteboard';
@@ -32,6 +33,7 @@ const TakeExam = () => {
   const [saving, setSaving] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const saveTimeoutRef = useRef(null);
 
   // Proctoring State
@@ -315,37 +317,18 @@ const TakeExam = () => {
   }, [submissionId, examStarted, logProctoringEvent]);
 
   useEffect(() => {
-    examService.getExamToTake(examId)
+    if (examStarted) return; // Only fetch status before starting
+    
+    examService.getCandidateExamStatus(examId)
       .then(res => {
         setExam(res.data.exam);
-        setQuestions(res.data.questions);
-        setSubmissionId(res.data.submission_id);
-        
-        if (res.data.answers) {
-          setAnswers(res.data.answers);
-        }
-        if (res.data.whiteboard_data) {
-          setWhiteboardData(res.data.whiteboard_data);
-        }
-
-        const startedAt = new Date(res.data.started_at).getTime();
-        const durationMs = res.data.exam.duration_minutes * 60 * 1000;
-        const endTime = startedAt + durationMs;
-        const now = new Date().getTime();
-        
-        if (now >= endTime) {
-          setTimeLeft(0);
-        } else {
-          setTimeLeft(Math.floor((endTime - now) / 1000));
-        }
-
         setLoading(false);
       })
       .catch(err => {
-        setError(err.response?.data?.detail || "Could not load exam. You may not be registered or outside the time window.");
+        setError(err.response?.data?.error || "Could not load exam. You may not be registered or outside the time window.");
         setLoading(false);
       });
-  }, [examId]);
+  }, [examId, examStarted]);
 
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0) return;
@@ -420,18 +403,51 @@ const TakeExam = () => {
       alert("Please grant camera and microphone access before starting the exam.");
       return;
     }
-    setMediaStream(preStream);
-    setExamStarted(true);
-    setIsFullscreenActive(true);
-
-    setTimeout(() => {
-      const container = document.getElementById('exam-fullscreen-container') || document.documentElement;
-      if (container && container.requestFullscreen) {
-        container.requestFullscreen().catch(err => {
-          console.error(`Fullscreen error: ${err.message}`);
-        });
+    
+    setLoading(true);
+    try {
+      // This endpoint actually starts the exam timer on the backend
+      const res = await examService.getExamToTake(examId);
+      
+      setExam(res.data.exam);
+      setQuestions(res.data.questions);
+      setSubmissionId(res.data.submission_id);
+      
+      if (res.data.answers) {
+        setAnswers(res.data.answers);
       }
-    }, 50);
+      if (res.data.whiteboard_data) {
+        setWhiteboardData(res.data.whiteboard_data);
+      }
+
+      const startedAt = new Date(res.data.started_at).getTime();
+      const durationMs = res.data.exam.duration_minutes * 60 * 1000;
+      const endTime = startedAt + durationMs;
+      const now = new Date().getTime();
+      
+      if (now >= endTime) {
+        setTimeLeft(0);
+      } else {
+        setTimeLeft(Math.floor((endTime - now) / 1000));
+      }
+
+      setMediaStream(preStream);
+      setExamStarted(true);
+      setIsFullscreenActive(true);
+      setLoading(false);
+
+      setTimeout(() => {
+        const container = document.getElementById('exam-fullscreen-container') || document.documentElement;
+        if (container && container.requestFullscreen) {
+          container.requestFullscreen().catch(err => {
+            console.error(`Fullscreen error: ${err.message}`);
+          });
+        }
+      }, 50);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not start exam. You may not be registered or outside the time window.");
+      setLoading(false);
+    }
   };
 
   if (submitting) {
@@ -458,7 +474,7 @@ const TakeExam = () => {
     if (showGuidelines) {
       return (
         <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-          <ExamGuidelines onAccept={startExam} />
+          <ExamGuidelines exam={exam} onAccept={startExam} />
         </Container>
       );
     }
@@ -567,36 +583,34 @@ const TakeExam = () => {
   const qId = currentQuestion?.id;
 
   return (
-    <Box id="exam-fullscreen-container" sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', width: '100vw', boxSizing: 'border-box', p: 2, overflowY: 'auto' }}>
-      <Container maxWidth="xl" sx={{ height: '88vh', display: 'flex', flexDirection: 'column' }}>
+    <Box id="exam-fullscreen-container" sx={{ bgcolor: '#f4f6f8', minHeight: '100vh', width: '100vw', boxSizing: 'border-box', p: 2, overflowY: 'auto', position: 'relative' }}>
+      <Container maxWidth="xl" sx={{ height: '90vh', display: 'flex', flexDirection: 'column' }}>
         
-        {/* Proctoring Monitor handles AI detection using single shared media stream */}
-        <ProctoringMonitor stream={mediaStream} isActive={examStarted} onViolation={logProctoringEvent} />
-
         {/* Header Bar */}
         <Paper sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Typography variant="h5">{exam.title}</Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#e8f5e9', color: '#2e7d32', px: 1.5, py: 0.5, borderRadius: 1 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4caf50' }} />
-            <Typography variant="caption" fontWeight="bold">AI Proctoring Active</Typography>
+          <Box display="flex" flexDirection="column" gap={0.5}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Typography variant="h5">{exam.title}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#e8f5e9', color: '#2e7d32', px: 1.5, py: 0.5, borderRadius: 1 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4caf50' }} />
+                <Typography variant="caption" fontWeight="bold">AI Proctoring Active</Typography>
+              </Box>
+            </Box>
           </Box>
-        </Box>
-        <Box display="flex" alignItems="center" gap={3}>
-          {saving && <Typography variant="caption" color="textSecondary">Saving...</Typography>}
-          <Typography variant="h6" color={timeLeft < 60 ? "error" : "primary"}>
-            Time Left: {formatTime(timeLeft || 0)}
-          </Typography>
-          <Button variant="contained" color="secondary" onClick={() => setSubmitDialogOpen(true)}>
-            Finish Exam
-          </Button>
-        </Box>
-      </Paper>
+          <Box display="flex" alignItems="center" gap={3}>
+            <Typography variant="caption" color="textSecondary" sx={{ visibility: saving ? 'visible' : 'hidden', minWidth: '50px' }}>Saving...</Typography>
+            <Typography variant="h6" color={timeLeft < 60 ? "error" : "primary"} sx={{ minWidth: '160px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+              Time Left: {formatTime(timeLeft || 0)}
+            </Typography>
+            <Button variant="contained" color="secondary" onClick={() => setSubmitDialogOpen(true)}>
+              Finish Exam
+            </Button>
+          </Box>
+        </Paper>
 
-      <Grid container spacing={2} sx={{ flexGrow: 1, minHeight: 0 }}>
-        {/* Main Question Area */}
-        <Grid item xs={12} md={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Paper sx={{ p: 3, flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <Paper sx={{ display: 'flex', flexGrow: 1, minHeight: 0, overflow: 'hidden', borderRadius: 2 }}>
+        {/* Left Side: Main Question Area */}
+        <Box sx={{ flex: 3, p: 3, display: 'flex', flexDirection: 'column', overflowY: 'auto', borderRight: '1px solid #e0e0e0' }}>
             {questions.length === 0 ? (
               <Typography>No questions in this exam.</Typography>
             ) : (
@@ -628,17 +642,41 @@ const TakeExam = () => {
                   placeholder="Type your answer here..."
                 />
 
-                <Whiteboard
-                  questionId={qId}
-                  savedData={whiteboardData[qId] || null}
-                  onSave={(id, dataUrl) => {
-                    setWhiteboardData(prev => ({ ...prev, [id]: dataUrl }));
-                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                    saveTimeoutRef.current = setTimeout(() => {
-                      saveAnswer(id, answers[id] || '', dataUrl);
-                    }, 1000);
-                  }}
-                />
+                <Button
+                  variant="outlined"
+                  startIcon={<BrushIcon />}
+                  onClick={() => setWhiteboardOpen(true)}
+                  sx={{ mb: 3 }}
+                >
+                  Use Whiteboard
+                </Button>
+
+                <Dialog
+                  open={whiteboardOpen}
+                  onClose={() => setWhiteboardOpen(false)}
+                  maxWidth="lg"
+                  fullWidth
+                  container={() => document.getElementById('exam-fullscreen-container') || document.body}
+                >
+                  <DialogTitle>Whiteboard</DialogTitle>
+                  <DialogContent sx={{ p: 0, height: '70vh' }}>
+                    <Whiteboard
+                      questionId={qId}
+                      savedData={whiteboardData[qId] || null}
+                      onSave={(id, dataUrl) => {
+                        setWhiteboardData(prev => ({ ...prev, [id]: dataUrl }));
+                        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                        saveTimeoutRef.current = setTimeout(() => {
+                          saveAnswer(id, answers[id] || '', dataUrl);
+                        }, 1000);
+                      }}
+                    />
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={() => setWhiteboardOpen(false)} variant="contained">Done</Button>
+                  </DialogActions>
+                </Dialog>
+
                 <Box display="flex" justifyContent="space-between" mt={3}>
                   <Button 
                     variant="outlined" 
@@ -657,18 +695,17 @@ const TakeExam = () => {
                 </Box>
               </>
             )}
-          </Paper>
-        </Grid>
+        </Box>
 
-        {/* Sidebar Palette */}
-        <Grid item xs={12} md={3} sx={{ height: '100%' }}>
-          <Paper sx={{ p: 2, height: '100%', overflowY: 'auto' }}>
-            <Typography variant="h6" gutterBottom>Questions</Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Grid container spacing={1}>
-              {questions.map((q, index) => {
-                const isAnswered = answers[q.id] && answers[q.id].trim().length > 0;
-                const isCurrent = index === currentIndex;
+        {/* Right Side: Sidebar Palette and Camera */}
+        <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', bgcolor: '#fafafa', minWidth: '250px' }}>
+            <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
+              <Typography variant="h6" gutterBottom>Questions</Typography>
+              <Divider sx={{ mb: 2 }} />
+              <Grid container spacing={1}>
+                {questions.map((q, index) => {
+                  const isAnswered = answers[q.id] && answers[q.id].trim().length > 0;
+                  const isCurrent = index === currentIndex;
                 
                 let bgColor = '#f0f0f0'; // Not visited/answered
                 let color = 'black';
@@ -717,9 +754,12 @@ const TakeExam = () => {
                 <Typography variant="caption">Current</Typography>
               </Box>
             </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+            </Box>
+
+            {/* Inline Proctoring Monitor handles AI detection using single shared media stream */}
+            <ProctoringMonitor stream={mediaStream} isActive={examStarted} onViolation={logProctoringEvent} inline={true} />
+        </Box>
+      </Paper>
 
       {/* Submit Confirmation Modal */}
       <Dialog 
@@ -747,7 +787,8 @@ const TakeExam = () => {
         onClose={() => setToastOpen(false)} 
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         PortalProps={{ container: () => document.getElementById('exam-fullscreen-container') || document.body }}
-        sx={{ mt: 8 }}
+        sx={{ mt: 8, position: 'fixed', zIndex: 9999 }}
+        disableWindowBlurListener
       >
         <Alert onClose={() => setToastOpen(false)} severity={toastSeverity} sx={{ width: '100%', fontSize: '1.1rem' }}>
           {proctoringMessage}

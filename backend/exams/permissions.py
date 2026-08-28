@@ -5,7 +5,14 @@ class IsExaminer(permissions.BasePermission):
     Custom permission to only allow examiners to create or modify exams.
     """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
+        return bool(request.user and request.user.is_authenticated and request.user.is_examiner)
+
+class IsCandidate(permissions.BasePermission):
+    """
+    Custom permission to only allow candidates to take exams.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_candidate)
 
 class IsExamCreator(permissions.BasePermission):
     """

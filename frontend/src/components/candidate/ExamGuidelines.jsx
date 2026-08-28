@@ -1,14 +1,26 @@
 import React, { useState } from 'react';
 import { Box, Typography, Checkbox, FormControlLabel, Button, Paper, Divider } from '@mui/material';
 
-const ExamGuidelines = ({ onAccept }) => {
+const ExamGuidelines = ({ exam, onAccept }) => {
   const [accepted, setAccepted] = useState(false);
 
   return (
     <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)', maxWidth: 800, mx: 'auto', mt: 4, mb: 4 }}>
       <Typography variant="h5" fontWeight="bold" gutterBottom align="center">
-        Candidate Exam Guidelines
+        {exam?.title ? `${exam.title} - Guidelines` : "Candidate Exam Guidelines"}
       </Typography>
+      
+      {exam?.description && (
+        <Box sx={{ bgcolor: '#e3f2fd', p: 3, borderRadius: 2, mb: 3, mt: 3 }}>
+          <Typography variant="subtitle1" color="primary.main" fontWeight="bold" gutterBottom>
+            📝 Exam Description
+          </Typography>
+          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+            {exam.description}
+          </Typography>
+        </Box>
+      )}
+
       <Divider sx={{ mb: 3 }} />
       
       <Box sx={{ 
