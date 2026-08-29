@@ -236,12 +236,18 @@ const TakeExam = () => {
   const violationCountRef = useRef(violationCount);
   useEffect(() => { violationCountRef.current = violationCount; }, [violationCount]);
 
+  const STRIKE_VIOLATIONS = ['tab_switch', 'window_blur', 'fullscreen_exit'];
+
   const logProctoringEvent = useCallback(async (eventType, details, blob = null) => {
-    // Use ref to get latest count (not the stale closure value)
-    const currentCount = violationCountRef.current;
-    const newCount = currentCount + 1;
-    setViolationCount(newCount);
-    localStorage.setItem(`violations_${submissionId}`, newCount);
+    // Only tab switching and alt screen / window blur / fullscreen exit increment warning count
+    const isStrike = STRIKE_VIOLATIONS.includes(eventType);
+
+    let newCount = violationCountRef.current;
+    if (isStrike) {
+      newCount = newCount + 1;
+      setViolationCount(newCount);
+      localStorage.setItem(`violations_${submissionId}`, newCount);
+    }
     
     // Formatting event type for humans
     const readableEvent = eventType.replace(/_/g, ' ');
@@ -249,11 +255,21 @@ const TakeExam = () => {
     let message = '';
     let severity = 'warning';
     
-    if (newCount < 10) {
-      message = `Warning: ${readableEvent}. Please maintain focus on the exam.`;
-    } else if (newCount < 15) {
-      severity = 'error';
-      message = `Final warning (${newCount}/15): ${readableEvent}. Your exam will be auto-submitted if violations continue.`;
+    if (isStrike) {
+      if (newCount === 1) {
+        severity = 'warning';
+        message = `Warning (1/3): ${readableEvent}. Tab and screen switching are strictly prohibited.`;
+      } else if (newCount === 2) {
+        severity = 'error';
+        message = `Final Warning (2/3): ${readableEvent}. Your exam will be auto-submitted on the next violation!`;
+      } else {
+        severity = 'error';
+        message = `Warning Limit Exceeded (3/3): ${readableEvent}. Exam auto-submitting...`;
+      }
+    } else {
+      // Audio spike, talking, multiple faces, no face just give a warning alert without increasing the count
+      severity = 'warning';
+      message = `Warning: ${readableEvent}. Please maintain focus and keep your face visible in the camera.`;
     }
 
     setProctoringMessage(message);
@@ -268,7 +284,12 @@ const TakeExam = () => {
       const formData = new FormData();
       formData.append('submission_id', submissionId);
       formData.append('event_type', eventType);
-      formData.append('details', JSON.stringify({ ...details, attempt: newCount, video_offset_sec: videoOffsetSec }));
+      formData.append('details', JSON.stringify({ 
+        ...details, 
+        is_strike: isStrike,
+        warning_count: newCount, 
+        video_offset_sec: videoOffsetSec 
+      }));
       if (blob && blob instanceof Blob) {
         formData.append('evidence', blob, 'evidence.webm');
       }
@@ -278,8 +299,8 @@ const TakeExam = () => {
       console.error('Failed to log proctoring incident', err);
     }
 
-    if (newCount >= 15) {
-      handleAutoSubmit("Exam auto-submitted due to excessive violations.");
+    if (isStrike && newCount >= 3) {
+      handleAutoSubmit("Exam auto-submitted due to exceeding maximum allowed tab/screen switching warnings (3 strikes).");
     }
   }, [submissionId, handleAutoSubmit]);
 
@@ -595,6 +616,21 @@ const TakeExam = () => {
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4caf50' }} />
                 <Typography variant="caption" fontWeight="bold">AI Proctoring Active</Typography>
               </Box>
+              {violationCount > 0 && (
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 0.8, 
+                  bgcolor: violationCount >= 2 ? '#FEF2F2' : '#FFFBEB', 
+                  color: violationCount >= 2 ? '#DC2626' : '#D97706', 
+                  border: `1px solid ${violationCount >= 2 ? '#FCA5A5' : '#FDE68A'}`,
+                  px: 1.5, 
+                  py: 0.5, 
+                  borderRadius: 1 
+                }}>
+                  <Typography variant="caption" fontWeight="bold">Warnings: {violationCount}/3</Typography>
+                </Box>
+              )}
             </Box>
           </Box>
           <Box display="flex" alignItems="center" gap={3}>

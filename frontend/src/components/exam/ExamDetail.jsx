@@ -22,7 +22,8 @@ import {
   Save as SaveIcon,
   Email as EmailIcon,
   Chat as ChatIcon,
-  Send as SendIcon
+  Send as SendIcon,
+  EditCalendar as EditCalendarIcon
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import examService from '../../api/examService';
@@ -426,8 +427,8 @@ const ExamDetail = () => {
                 </Typography>
               </Box>
               <Box>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}>Passing Marks</Typography>
-                <Typography variant="body2" fontWeight="600">{exam.passing_marks} pts</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}>Total Questions</Typography>
+                <Typography variant="body2" fontWeight="600">{questions.length} questions</Typography>
               </Box>
             </Box>
           </Box>

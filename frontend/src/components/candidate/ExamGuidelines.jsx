@@ -110,10 +110,10 @@ const ExamGuidelines = ({ exam, onAccept }) => {
 
         <Typography variant="subtitle1" fontWeight="bold" gutterBottom mt={3}>⚠️ Violations & Consequences</Typography>
         <Typography variant="body2" paragraph>
-          <strong>Warning System</strong> – You will receive a warning notification for each violation detected (e.g., no face visible, multiple faces, talking, tab switching).
+          <strong>Proctoring Notifications</strong> – You will receive real-time alerts if environmental violations are detected (e.g., audio spikes, talking, leaving camera frame, or multiple faces). These are logged for examiner review.
         </Typography>
         <Typography variant="body2" paragraph>
-          <strong>Violation Counter</strong> – Each violation increases your violation count. If you exceed the allowed number of violations (15), your exam will be automatically submitted.
+          <strong>Warning Limit (3 Strikes)</strong> – Tab switching, exiting full-screen mode, or switching to other application windows will directly increment your official warning count. Reaching <strong>3 warnings</strong> will result in immediate automatic submission of your exam.
         </Typography>
 
         <Typography variant="subtitle1" fontWeight="bold" gutterBottom mt={3}>🆘 Technical Support</Typography>
