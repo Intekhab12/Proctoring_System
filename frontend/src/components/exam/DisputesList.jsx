@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, Box, Paper, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, CircularProgress, Alert,
-  Breadcrumbs, Link, Button, IconButton
+  Breadcrumbs, Link, Button
 } from '@mui/material';
+import ChatIcon from '@mui/icons-material/Chat';
 import { useParams, useNavigate } from 'react-router-dom';
 import examService from '../../api/examService';
-import DisputeReplyModal from './DisputeReplyModal';
+import DisputeChatModal from '../common/DisputeChatModal';
 
 const DisputesList = () => {
   const { examId } = useParams();
@@ -16,7 +17,7 @@ const DisputesList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  const [replyModalOpen, setReplyModalOpen] = useState(false);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
   const [selectedDispute, setSelectedDispute] = useState(null);
 
   const fetchDisputes = async () => {
@@ -36,9 +37,9 @@ const DisputesList = () => {
     fetchDisputes();
   }, [examId]);
 
-  const handleOpenReply = (dispute) => {
+  const handleOpenChat = (dispute) => {
     setSelectedDispute(dispute);
-    setReplyModalOpen(true);
+    setChatModalOpen(true);
   };
 
   const handleResolve = async (disputeId) => {
@@ -47,6 +48,7 @@ const DisputesList = () => {
       await examService.resolveDispute(disputeId);
       fetchDisputes();
     } catch (err) {
+      console.error("Failed to resolve dispute:", err);
       alert("Failed to resolve dispute.");
     }
   };
@@ -54,15 +56,15 @@ const DisputesList = () => {
   const getStatusChip = (status) => {
     switch (status) {
       case 'open':
-        return <Chip label="Open" color="warning" size="small" />;
+        return <Chip label="Open" color="warning" size="small" sx={{ fontWeight: 600 }} />;
       case 'in_progress':
-        return <Chip label="In Progress" color="info" size="small" />;
+        return <Chip label="In Progress" color="info" size="small" sx={{ fontWeight: 600 }} />;
       case 'resolved':
-        return <Chip label="Resolved" color="success" size="small" />;
+        return <Chip label="Resolved" color="success" size="small" sx={{ fontWeight: 600 }} />;
       case 'closed':
-        return <Chip label="Closed" size="small" />;
+        return <Chip label="Closed" size="small" sx={{ fontWeight: 600 }} />;
       default:
-        return <Chip label={status} size="small" />;
+        return <Chip label={status} size="small" sx={{ fontWeight: 600 }} />;
     }
   };
 
@@ -98,19 +100,19 @@ const DisputesList = () => {
           <Table>
             <TableHead sx={{ bgcolor: 'grey.100' }}>
               <TableRow>
-                <TableCell>Candidate</TableCell>
-                <TableCell>Question</TableCell>
-                <TableCell>Message</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Candidate</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Question</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Latest Message</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {disputes.map((dispute) => (
-                <TableRow key={dispute.id}>
+                <TableRow key={dispute.id} hover>
                   <TableCell>
-                    <Typography variant="body2" fontWeight="bold">{dispute.raised_by_name}</Typography>
+                    <Typography variant="body2" fontWeight="bold">{dispute.raised_by_name || 'Candidate'}</Typography>
                   </TableCell>
                   <TableCell>
                     {dispute.question_text ? (
@@ -119,28 +121,32 @@ const DisputesList = () => {
                       <Typography variant="caption" color="textSecondary">Overall Exam</Typography>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{dispute.message}</Typography>
+                  <TableCell sx={{ maxWidth: 280 }}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {dispute.reply ? `Reply: ${dispute.reply}` : dispute.message}
+                    </Typography>
                   </TableCell>
                   <TableCell>{getStatusChip(dispute.status)}</TableCell>
                   <TableCell>
-                    <Typography variant="caption">{new Date(dispute.created_at).toLocaleString()}</Typography>
+                    <Typography variant="caption">{new Date(dispute.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</Typography>
                   </TableCell>
                   <TableCell align="right">
                     <Button 
                       size="small" 
-                      variant="outlined" 
-                      onClick={() => handleOpenReply(dispute)}
-                      sx={{ mr: 1 }}
+                      variant="contained" 
+                      startIcon={<ChatIcon fontSize="small" />}
+                      onClick={() => handleOpenChat(dispute)}
+                      sx={{ mr: 1, textTransform: 'none', borderRadius: 1.5, bgcolor: '#0F172A', '&:hover': { bgcolor: '#020617' } }}
                     >
-                      {dispute.reply ? 'Edit Reply' : 'Reply'}
+                      Open Chat
                     </Button>
                     {dispute.status !== 'resolved' && (
                       <Button 
                         size="small" 
                         color="success" 
-                        variant="contained"
+                        variant="outlined"
                         onClick={() => handleResolve(dispute.id)}
+                        sx={{ textTransform: 'none', borderRadius: 1.5 }}
                       >
                         Resolve
                       </Button>
@@ -153,12 +159,12 @@ const DisputesList = () => {
         </TableContainer>
       )}
 
-      {replyModalOpen && selectedDispute && (
-        <DisputeReplyModal
-          open={replyModalOpen}
-          onClose={() => setReplyModalOpen(false)}
+      {chatModalOpen && selectedDispute && (
+        <DisputeChatModal
+          open={chatModalOpen}
+          onClose={() => setChatModalOpen(false)}
           dispute={selectedDispute}
-          onSuccess={fetchDisputes}
+          onDisputeUpdated={fetchDisputes}
         />
       )}
     </Container>

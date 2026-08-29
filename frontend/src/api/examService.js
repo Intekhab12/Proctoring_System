@@ -7,6 +7,7 @@ const examService = {
   createExam: (data) => axiosInstance.post('/api/exams/', data),
   updateExam: (id, data) => axiosInstance.put(`/api/exams/${id}/`, data),
   patchExam: (id, data) => axiosInstance.patch(`/api/exams/${id}/`, data),
+  deleteExam: (id) => axiosInstance.delete(`/api/exams/${id}/`),
   publishExam: (id) => axiosInstance.patch(`/api/exams/${id}/publish/`),
   getShareLink: (id) => axiosInstance.get(`/api/exams/${id}/share-link/`),
 
@@ -15,7 +16,9 @@ const examService = {
   addQuestion: (examId, formData) => axiosInstance.post(`/api/exams/${examId}/questions/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  bulkAddQuestions: (examId, data) => axiosInstance.post(`/api/exams/${examId}/questions/bulk/`, data),
+  updateQuestion: (examId, questionId, formData) => axiosInstance.patch(`/api/exams/${examId}/questions/${questionId}/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
   deleteQuestion: (examId, questionId) => axiosInstance.delete(`/api/exams/${examId}/questions/${questionId}/`),
 
   // Eligibility
@@ -43,7 +46,9 @@ const examService = {
   getExamSubmissions: (examId) => axiosInstance.get(`/api/exams/${examId}/submissions/`),
   getSubmissionDetail: (submissionId) => axiosInstance.get(`/api/exams/submissions/${submissionId}/`),
   gradeAnswer: (answerId, data) => axiosInstance.patch(`/api/exams/answers/${answerId}/`, data),
-  publishResults: (submissionId) => axiosInstance.post(`/api/exams/submissions/${submissionId}/publish/`),
+  saveDraftGrades: (submissionId, data = {}) => axiosInstance.post(`/api/exams/submissions/${submissionId}/save-grades/`, data),
+  publishResults: (submissionId, data = {}) => axiosInstance.post(`/api/exams/submissions/${submissionId}/publish/`, data),
+  publishAllResults: (examId) => axiosInstance.post(`/api/exams/${examId}/publish-all-results/`),
 
   // Proctoring
   logProctoringIncident: (data) => axiosInstance.post('/api/exams/proctoring/logs/', data),
@@ -64,6 +69,9 @@ const examService = {
   createDispute: (data) => axiosInstance.post('/api/exams/disputes/', data),
   getMyDisputes: () => axiosInstance.get('/api/exams/disputes/me/'),
   getExamDisputes: (examId) => axiosInstance.get(`/api/exams/${examId}/disputes/`),
+  getDisputeDetail: (id) => axiosInstance.get(`/api/exams/disputes/${id}/`),
+  sendDisputeMessage: (id, message) => axiosInstance.post(`/api/exams/disputes/${id}/messages/`, { message }),
+  updateDisputeStatus: (id, status) => axiosInstance.post(`/api/exams/disputes/${id}/status/`, { status }),
   replyDispute: (id, data) => axiosInstance.patch(`/api/exams/disputes/${id}/reply/`, data),
   resolveDispute: (id) => axiosInstance.post(`/api/exams/disputes/${id}/resolve/`),
   

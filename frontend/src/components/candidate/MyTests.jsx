@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, Box, Paper, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, CircularProgress, Alert,
-  Breadcrumbs, Link, Card, CardContent, Grid, Button
+  Breadcrumbs, Link, Button
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import examService from '../../api/examService';
@@ -106,51 +106,80 @@ const MyTests = () => {
                   <TableCell sx={{ fontWeight: 'bold' }}>Exam Title</TableCell>
                   <TableCell sx={{ fontWeight: 'bold' }}>Date & Time</TableCell>
                   <TableCell sx={{ fontWeight: 'bold' }}>Duration</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }} align="center">Results</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }} align="center">Action / Results</TableCell>
                   <TableCell sx={{ fontWeight: 'bold' }} align="right">Status</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {exams.map((exam) => (
-                  <TableRow 
-                    key={exam.id}
-                    hover
-                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                  >
-                    <TableCell component="th" scope="row">
-                      <Typography variant="subtitle2" fontWeight="bold">
-                        {exam.title}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="textPrimary">
-                        {formatDateTimeRange(exam.start_time, exam.end_time)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="textSecondary">
-                        {exam.duration_minutes} mins
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      {exam.submission_status === 'evaluated' ? (
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          color="primary"
-                          onClick={() => navigate(`/candidate-results/${exam.submission_id}`)}
-                        >
-                          View Results
-                        </Button>
-                      ) : (
-                        <Typography variant="body2" color="textSecondary">-</Typography>
-                      )}
-                    </TableCell>
-                    <TableCell align="right">
-                      {getStatusChip(exam.status)}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {exams.map((exam) => {
+                  const isSubmitted = exam.submission_status === 'submitted' || exam.submission_status === 'evaluated';
+                  const isRegistered = exam.eligibility_status === 'registered' || exam.submission_id;
+                  const isOngoing = exam.status === 'ongoing';
+
+                  return (
+                    <TableRow 
+                      key={exam.id}
+                      hover
+                      sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    >
+                      <TableCell component="th" scope="row">
+                        <Typography variant="subtitle2" fontWeight="bold">
+                          {exam.title}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="textPrimary">
+                          {formatDateTimeRange(exam.start_time, exam.end_time)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="textSecondary">
+                          {exam.duration_minutes} mins
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        {exam.submission_status === 'evaluated' ? (
+                          <Button
+                            variant="contained"
+                            size="small"
+                            color="primary"
+                            onClick={() => navigate(`/candidate-results/${exam.submission_id}`)}
+                            sx={{ textTransform: 'none', borderRadius: 1.5 }}
+                          >
+                            View Results
+                          </Button>
+                        ) : isSubmitted ? (
+                          <Chip label="Submitted" size="small" color="default" sx={{ fontWeight: 600 }} />
+                        ) : isRegistered && isOngoing ? (
+                          <Button
+                            variant="contained"
+                            size="small"
+                            color="success"
+                            onClick={() => navigate(`/exam/take/${exam.id}`)}
+                            sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}
+                          >
+                            Start Exam
+                          </Button>
+                        ) : !isRegistered ? (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color="primary"
+                            onClick={() => navigate(`/exam/register/${exam.id}`)}
+                            sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 1.5 }}
+                          >
+                            Register
+                          </Button>
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">Seat Confirmed</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        {getStatusChip(exam.status)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>

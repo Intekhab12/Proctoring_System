@@ -77,7 +77,7 @@ class ForgotPasswordView(views.APIView):
         send_mail(
             'Password Reset OTP',
             f'Your OTP for password reset is {otp}. It is valid for 10 minutes.',
-            'noreply@proctoring.com',
+            settings.DEFAULT_FROM_EMAIL,
             [email],
             fail_silently=False,
         )

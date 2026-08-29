@@ -150,3 +150,17 @@ class Dispute(models.Model):
 
     def __str__(self):
         return f"Dispute {self.id} for Submission {self.submission.id}"
+
+class DisputeMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dispute = models.ForeignKey(Dispute, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='dispute_messages')
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Message by {self.sender.email} on Dispute {self.dispute.id}"
+

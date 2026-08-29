@@ -23,17 +23,153 @@ import MyDisputes from './components/candidate/MyDisputes';
 import DisputesList from './components/exam/DisputesList';
 
 const theme = createTheme({
+  typography: {
+    fontFamily: '"Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    h4: {
+      fontWeight: 700,
+      letterSpacing: '-0.02em',
+    },
+    h5: {
+      fontWeight: 700,
+      letterSpacing: '-0.01em',
+    },
+    h6: {
+      fontWeight: 600,
+      letterSpacing: '-0.01em',
+    },
+    subtitle1: {
+      fontWeight: 600,
+    },
+    button: {
+      textTransform: 'none',
+      fontWeight: 600,
+    },
+  },
   palette: {
     mode: 'light',
     primary: {
-      main: '#1976d2',
+      main: '#0F172A',
+      light: '#334155',
+      dark: '#020617',
+      contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#dc004e',
+      main: '#E11D48',
+      light: '#FFE4E6',
+      dark: '#9F1239',
+      contrastText: '#FFFFFF',
+    },
+    success: {
+      main: '#10B981',
+      light: '#ECFDF5',
+      dark: '#059669',
+    },
+    warning: {
+      main: '#F59E0B',
+      light: '#FFFBEB',
+      dark: '#D97706',
+    },
+    error: {
+      main: '#EF4444',
+      light: '#FEF2F2',
+      dark: '#DC2626',
     },
     background: {
-      default: '#f4f6f8'
-    }
+      default: '#F8FAFC',
+      paper: '#FFFFFF',
+    },
+    text: {
+      primary: '#0F172A',
+      secondary: '#64748B',
+    },
+    divider: '#E2E8F0',
+  },
+  shape: {
+    borderRadius: 8,
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          textTransform: 'none',
+          fontWeight: 600,
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          },
+        },
+        containedPrimary: {
+          backgroundColor: '#0F172A',
+          color: '#FFFFFF',
+          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)',
+          '&:hover': {
+            backgroundColor: '#020617',
+            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.4)',
+          },
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+          borderRadius: 8,
+        },
+        elevation1: {
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          fontWeight: 600,
+          borderRadius: 8,
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+        },
+        notchedOutline: {
+          borderRadius: 8,
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 8,
+        },
+      },
+    },
+    MuiAlert: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+        },
+      },
+    },
+    MuiAvatar: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+        },
+        rounded: {
+          borderRadius: 8,
+        },
+      },
+    },
   },
 });
 

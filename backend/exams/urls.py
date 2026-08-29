@@ -6,6 +6,7 @@ from .views import (
     ExamRegistrationView, AvailableExamsView,
     ExamTakeView, SaveAnswerView, SubmitExamView,
     SubmissionDetailView, AnswerGradingView, PublishResultsView,
+    SaveDraftGradesView, PublishAllResultsView,
     CandidateExamStatusView, ProctoringLogCreateView, ProctoringLogListView,
     ProctoringScreenshotUploadView, AudioUploadView, ExamAudioDetailView,
     VideoUploadView, ExamVideoDetailView,
@@ -80,7 +81,9 @@ urlpatterns = [
     
     # Grading routes
     path('submissions/<uuid:submission_id>/', SubmissionDetailView.as_view(), name='submission-detail'),
+    path('submissions/<uuid:submission_id>/save-grades/', SaveDraftGradesView.as_view(), name='submission-save-grades'),
     path('submissions/<uuid:submission_id>/publish/', PublishResultsView.as_view(), name='submission-publish'),
+    path('<uuid:exam_id>/publish-all-results/', PublishAllResultsView.as_view(), name='exam-publish-all-results'),
     path('answers/<uuid:answer_id>/', AnswerGradingView.as_view(), name='answer-grade'),
 
     # Exam viewset (placed after nested to avoid URL matching conflicts with primary keys)

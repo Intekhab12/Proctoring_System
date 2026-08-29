@@ -13,12 +13,17 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    role = serializers.ChoiceField(choices=['student', 'candidate', 'examiner'], required=False, default='student', write_only=True)
     
     class Meta:
         model = User
-        fields = ['email', 'password', 'full_name', 'contact_number', 'handle', 'institution']
+        fields = ['email', 'password', 'full_name', 'contact_number', 'handle', 'institution', 'role']
 
     def create(self, validated_data):
+        role = validated_data.pop('role', 'student')
+        is_examiner = (role == 'examiner')
+        is_candidate = (role in ['student', 'candidate'])
+
         # Auto generate handle if not provided
         if not validated_data.get('handle'):
             base_handle = validated_data['email'].split('@')[0]
@@ -35,7 +40,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             full_name=validated_data['full_name'],
             contact_number=validated_data.get('contact_number', ''),
             handle=validated_data.get('handle'),
-            institution=validated_data.get('institution', '')
+            institution=validated_data.get('institution', ''),
+            is_examiner=is_examiner,
+            is_candidate=is_candidate
         )
         return user
 

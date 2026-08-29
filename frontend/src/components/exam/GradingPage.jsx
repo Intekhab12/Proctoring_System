@@ -5,7 +5,7 @@ import {
   CircularProgress, Alert, Divider, Chip, Grid, Slider,
   Tabs, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Link, Modal, Fade, Backdrop, IconButton
 } from '@mui/material';
-import { Brush as BrushIcon } from '@mui/icons-material';
+import { Brush as BrushIcon, Save as SaveIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import examService from '../../api/examService';
 
 const GradingPage = () => {
@@ -15,7 +15,7 @@ const GradingPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
-  const [publishing, setPublishing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   const [proctoringLogs, setProctoringLogs] = useState([]);
   const [videoRecording, setVideoRecording] = useState(null);
@@ -44,7 +44,7 @@ const GradingPage = () => {
       const initialEdits = {};
       res.data.answers.forEach(ans => {
         initialEdits[ans.id] = {
-          marks_awarded: ans.marks_awarded || '',
+          marks_awarded: ans.marks_awarded !== null && ans.marks_awarded !== undefined ? ans.marks_awarded : '',
           feedback: ans.feedback || ''
         };
       });
@@ -73,12 +73,9 @@ const GradingPage = () => {
   };
 
   // Download the entire video file as a blob so Chrome can seek freely.
-  // MediaRecorder WebM files lack Cues (keyframe index), making them
-  // unseekable when streamed via HTTP. Loading into a blob:// URL fixes this.
   useEffect(() => {
     if (!videoRecording?.video_url) return;
     
-    // Revoke previous blob URL to prevent memory leaks
     if (videoBlobUrl) {
       URL.revokeObjectURL(videoBlobUrl);
       setVideoBlobUrl(null);
@@ -86,7 +83,6 @@ const GradingPage = () => {
 
     setVideoDownloading(true);
     setVideoLoaded(false);
-    console.log('[GradingPage] Downloading video as blob for seekable playback...');
 
     fetch(videoRecording.video_url)
       .then(res => res.blob())
@@ -94,83 +90,48 @@ const GradingPage = () => {
         const url = URL.createObjectURL(blob);
         setVideoBlobUrl(url);
         setVideoDownloading(false);
-        console.log(`[GradingPage] ✅ Video blob ready (${(blob.size / (1024*1024)).toFixed(1)} MB)`);
       })
       .catch(err => {
         console.error('[GradingPage] Failed to download video blob:', err);
         setVideoDownloading(false);
-        // Fall back to direct URL
         setVideoBlobUrl(videoRecording.video_url);
       });
 
     return () => {
-      // Cleanup on unmount
       if (videoBlobUrl) {
         URL.revokeObjectURL(videoBlobUrl);
       }
     };
   }, [videoRecording?.video_url]);
 
-  const autosaveTimers = useRef({});
-
   const handleEditChange = (answerId, field, value) => {
-    setEdits(prev => {
-      const newEdits = {
-        ...prev,
-        [answerId]: {
-          ...prev[answerId],
-          [field]: value
-        }
-      };
-      
-      if (autosaveTimers.current[answerId]) {
-        clearTimeout(autosaveTimers.current[answerId]);
+    setEdits(prev => ({
+      ...prev,
+      [answerId]: {
+        ...prev[answerId],
+        [field]: value
       }
-      
-      autosaveTimers.current[answerId] = setTimeout(() => {
-        handleAutosave(answerId, newEdits[answerId]);
-      }, 1000);
-      
-      return newEdits;
-    });
+    }));
   };
 
-  const handleAutosave = async (answerId, data) => {
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    setSaveSuccess('');
     try {
-      const payload = {
-        marks_awarded: data.marks_awarded !== '' ? parseInt(data.marks_awarded, 10) : null,
-        feedback: data.feedback
-      };
-      await examService.gradeAnswer(answerId, payload);
-      setSaveSuccess(`Autosaved at ${new Date().toLocaleTimeString()}`);
-      
-      setSubmission(prev => ({
-        ...prev,
-        answers: prev.answers.map(ans => 
-          ans.id === answerId 
-            ? { ...ans, marks_awarded: payload.marks_awarded, feedback: payload.feedback } 
-            : ans
-        )
+      const answersPayload = Object.entries(edits).map(([id, val]) => ({
+        id,
+        marks_awarded: val.marks_awarded !== '' && val.marks_awarded !== null ? parseInt(val.marks_awarded, 10) : null,
+        feedback: val.feedback || ''
       }));
-    } catch (err) {
-      console.error('Failed to autosave answer grade.', err);
-    }
-  };
 
-  const handlePublish = async () => {
-    if (!window.confirm("Are you sure you want to publish results? This will send an email to the candidate and lock further grading edits.")) {
-      return;
-    }
-    
-    setPublishing(true);
-    try {
-      await examService.publishResults(submissionId);
-      setSaveSuccess('Results published and email sent to candidate.');
-      fetchSubmission(); // Refresh to get evaluated status and total score
+      const res = await examService.saveDraftGrades(submissionId, { answers: answersPayload });
+      setSaveSuccess(res.data.message || 'Results saved for this candidate! When you click "Publish" on the Submissions dashboard, all candidates will see their results.');
+      fetchSubmission();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to publish results.');
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to save evaluation.');
     } finally {
-      setPublishing(false);
+      setSaving(false);
     }
   };
 
@@ -246,14 +207,23 @@ const GradingPage = () => {
         <Typography><strong>Name:</strong> {submission.candidate.full_name || 'N/A'}</Typography>
         <Typography><strong>Email:</strong> {submission.candidate.email}</Typography>
         <Typography><strong>Submitted At:</strong> {submission.submitted_at ? new Date(submission.submitted_at).toLocaleString() : 'Not submitted'}</Typography>
-        <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Chip label={submission.status} color={isEvaluated ? "success" : "warning"} />
-          {isEvaluated && (
-            <Typography variant="subtitle1" fontWeight="bold">
+        <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Chip 
+            label={isEvaluated ? "Published" : (submission.total_score !== null && submission.total_score !== undefined ? "Saved (Unpublished)" : "Submitted")} 
+            color={isEvaluated ? "success" : (submission.total_score !== null && submission.total_score !== undefined ? "primary" : "warning")} 
+            sx={{ fontWeight: 600 }} 
+          />
+          {submission.total_score !== null && submission.total_score !== undefined && (
+            <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
               Total Score: {submission.total_score}
             </Typography>
           )}
         </Box>
+        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
+          {isEvaluated 
+            ? "ℹ️ Results are currently published. Edit marks or feedback below and click 'Save' to update this candidate's score."
+            : "ℹ️ Enter marks and feedback below and click 'Save'. When you click 'Publish' on the Submissions dashboard, all candidates will receive their results."}
+        </Typography>
       </Paper>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -281,36 +251,47 @@ const GradingPage = () => {
                 </Box>
               )}
 
-              <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, mb: 3 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="subtitle2" color="textSecondary">Candidate's Answer:</Typography>
-                  {answer.whiteboard_data && (
+              <Box sx={{ bgcolor: '#f8fafc', p: 2.5, borderRadius: 2, border: '1px solid #e2e8f0', mb: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                  <Typography variant="subtitle2" fontWeight="700" color="#334155">
+                    Candidate's Response:
+                  </Typography>
+                  {answer.whiteboard_data ? (
                     <Button 
                       variant="outlined" 
                       size="small" 
+                      color="primary"
                       startIcon={<BrushIcon />}
                       onClick={() => setSelectedWhiteboard(answer.whiteboard_data)}
+                      sx={{ textTransform: 'none', borderRadius: 1.5 }}
                     >
-                      View Drawing
+                      View Whiteboard Drawing
                     </Button>
+                  ) : (
+                    <Chip 
+                      label="No Drawing" 
+                      size="small" 
+                      variant="outlined" 
+                      sx={{ color: '#94A3B8', borderColor: '#CBD5E1', fontSize: '0.75rem' }} 
+                    />
                   )}
                 </Box>
-                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                  {answer.text_answer || <span style={{ fontStyle: 'italic', color: '#888' }}>No answer provided</span>}
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', color: '#1E293B' }}>
+                  {answer.text_answer || <span style={{ fontStyle: 'italic', color: '#94A3B8' }}>No text answer provided.</span>}
                 </Typography>
               </Box>
 
               <Divider sx={{ my: 2 }} />
               
-              <Typography variant="subtitle1" gutterBottom>Grading</Typography>
+              <Typography variant="subtitle1" fontWeight="700" color="#1E293B" gutterBottom>Grading & Feedback</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <TextField
                   label="Marks Awarded"
                   type="number"
                   value={edits[answer.id]?.marks_awarded}
                   onChange={(e) => handleEditChange(answer.id, 'marks_awarded', e.target.value)}
-                  disabled={isEvaluated}
-                  sx={{ width: '200px' }}
+                  sx={{ width: '220px' }}
+                  placeholder="Enter marks"
                 />
                 <TextField
                   label="Feedback (Optional)"
@@ -318,8 +299,8 @@ const GradingPage = () => {
                   rows={3}
                   value={edits[answer.id]?.feedback}
                   onChange={(e) => handleEditChange(answer.id, 'feedback', e.target.value)}
-                  disabled={isEvaluated}
                   fullWidth
+                  placeholder="Provide personalized remarks or explanation for the candidate..."
                 />
               </Box>
             </Paper>
@@ -342,7 +323,7 @@ const GradingPage = () => {
               <TableBody>
                 {proctoringLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} align="center">No proctoring incidents logged.</TableCell>
+                    <TableCell colSpan={4} align="center">No proctoring incidents logged.</TableCell>
                   </TableRow>
                 ) : (
                   proctoringLogs.map((log) => (
@@ -435,7 +416,6 @@ const GradingPage = () => {
                     <Box display="flex" flexDirection="column" gap={1.5}>
                       {proctoringLogs.map((log, idx) => {
                         const rawOffsetSec = getOffsetForLog(log);
-                        // 2-second pre-buffer lead-in so examiner sees candidate behavior right before the incident
                         const seekTimeSec = Math.max(0, rawOffsetSec - 2);
 
                         return (
@@ -547,19 +527,35 @@ const GradingPage = () => {
         </Fade>
       </Modal>
 
-      {!isEvaluated && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4 }}>
-          <Button 
-            variant="contained" 
-            color="success" 
-            size="large"
-            onClick={handlePublish}
-            disabled={publishing}
-          >
-            {publishing ? 'Publishing...' : 'Publish Results'}
-          </Button>
+      {/* Action Footer */}
+      <Paper elevation={0} sx={{ p: 3, mt: 4, borderRadius: 3, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ maxWidth: '460px' }}>
+            💡 <strong>Save</strong> stores marks and feedback for this candidate. Click <strong>"Publish"</strong> on the Submissions dashboard when you are ready to release all results to candidates.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button 
+              variant="outlined" 
+              startIcon={<ArrowBackIcon />}
+              onClick={() => navigate(`/exams/${submission.exam}/submissions`)}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+            >
+              Back to Submissions
+            </Button>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              size="large"
+              onClick={handleSave}
+              disabled={saving}
+              startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 3.5, bgcolor: '#0F172A', '&:hover': { bgcolor: '#020617' } }}
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+          </Box>
         </Box>
-      )}
+      </Paper>
     </Container>
   );
 };

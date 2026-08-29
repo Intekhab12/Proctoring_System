@@ -240,6 +240,7 @@ class AvailableExamsView(views.APIView):
         # and maybe time window, but let's just return what they are eligible for.
         now = timezone.now()
         
+        # Pending registration (must be published and not expired)
         pending_eligibilities = ExamEligibility.objects.filter(
             email=user.email,
             status='pending',
@@ -247,11 +248,18 @@ class AvailableExamsView(views.APIView):
             exam__end_time__gt=now
         ).select_related('exam')
         
+        # Registered tests that are not expired and not already submitted
+        submitted_exam_ids = Submission.objects.filter(
+            candidate=user,
+            status__in=['submitted', 'evaluated']
+        ).values_list('exam_id', flat=True)
+        
         registered_eligibilities = ExamEligibility.objects.filter(
             email=user.email,
             status='registered',
-            exam__is_published=True
-        ).select_related('exam')
+            exam__is_published=True,
+            exam__end_time__gt=now
+        ).exclude(exam_id__in=submitted_exam_ids).select_related('exam')
         
         def format_exam(e_obj):
             return {
@@ -299,6 +307,22 @@ class CandidateExamStatusView(views.APIView):
         
         return Response(status_info)
 
+def ensure_all_answers_exist(submission):
+    """
+    Guarantees that an Answer object exists for every Question in the exam,
+    preserving empty text answers and empty whiteboard drawings so questions
+    are never omitted in grading, submission, or result views.
+    """
+    for q in submission.exam.questions.all().order_by('order', 'id'):
+        Answer.objects.get_or_create(
+            submission=submission,
+            question=q,
+            defaults={
+                'text_answer': '',
+                'whiteboard_data': None,
+            }
+        )
+
 class ExamTakeView(views.APIView):
     permission_classes = [IsAuthenticated, IsCandidate]
 
@@ -326,6 +350,8 @@ class ExamTakeView(views.APIView):
                 eligibility.status = 'started'
                 eligibility.save()
             submission.save()
+        
+        ensure_all_answers_exist(submission)
         
         import random
         # Get questions
@@ -405,6 +431,8 @@ class SubmitExamView(views.APIView):
         except Submission.DoesNotExist:
             raise PermissionDenied("Submission not found.")
 
+        ensure_all_answers_exist(submission)
+
         if submission.status == 'submitted':
             return Response({'message': 'Already submitted.'})
             
@@ -427,6 +455,7 @@ class SubmissionDetailView(views.APIView):
         if submission.exam.creator != request.user:
             raise PermissionDenied("Only the exam creator can view this submission.")
         
+        ensure_all_answers_exist(submission)
         serializer = SubmissionEvaluationSerializer(submission)
         return Response(serializer.data)
 
@@ -441,13 +470,77 @@ class AnswerGradingView(views.APIView):
         marks = request.data.get('marks_awarded')
         feedback = request.data.get('feedback')
         
-        if marks is not None:
+        if marks is not None and marks != '':
             answer.marks_awarded = int(marks)
+        elif marks == '':
+            answer.marks_awarded = None
+            
         if feedback is not None:
             answer.feedback = feedback
             
         answer.save()
-        return Response({'message': 'Grading updated successfully'})
+
+        # Recalculate total_score
+        total_marks = answer.submission.answers.aggregate(Sum('marks_awarded'))['marks_awarded__sum']
+        answer.submission.total_score = total_marks or 0
+        answer.submission.save(update_fields=['total_score'])
+
+        return Response({
+            'message': 'Grading updated successfully',
+            'total_score': answer.submission.total_score
+        })
+
+class SaveDraftGradesView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, submission_id):
+        submission = get_object_or_404(Submission, id=submission_id)
+        if submission.exam.creator != request.user:
+            raise PermissionDenied("Only the exam creator can grade this submission.")
+        
+        ensure_all_answers_exist(submission)
+
+        answers_data = request.data.get('answers')
+        if answers_data:
+            if isinstance(answers_data, list):
+                for item in answers_data:
+                    a_id = item.get('id')
+                    marks = item.get('marks_awarded')
+                    feedback = item.get('feedback')
+                    if a_id:
+                        ans = submission.answers.filter(id=a_id).first()
+                        if ans:
+                            if marks is not None and marks != '':
+                                ans.marks_awarded = int(marks)
+                            elif marks == '':
+                                ans.marks_awarded = None
+                            if feedback is not None:
+                                ans.feedback = feedback
+                            ans.save()
+            elif isinstance(answers_data, dict):
+                for a_id, item in answers_data.items():
+                    ans = submission.answers.filter(id=a_id).first()
+                    if ans:
+                        marks = item.get('marks_awarded')
+                        feedback = item.get('feedback')
+                        if marks is not None and marks != '':
+                            ans.marks_awarded = int(marks)
+                        elif marks == '':
+                            ans.marks_awarded = None
+                        if feedback is not None:
+                            ans.feedback = feedback
+                        ans.save()
+
+        # Recalculate total score
+        total_marks = submission.answers.aggregate(Sum('marks_awarded'))['marks_awarded__sum']
+        submission.total_score = total_marks or 0
+        submission.save(update_fields=['total_score'])
+
+        return Response({
+            'message': 'Draft marks saved successfully. You can publish to all candidates together from the Submissions list.',
+            'total_score': submission.total_score,
+            'status': submission.status
+        })
 
 class PublishResultsView(views.APIView):
     permission_classes = [IsAuthenticated]
@@ -457,6 +550,42 @@ class PublishResultsView(views.APIView):
         if submission.exam.creator != request.user:
             raise PermissionDenied("Only the exam creator can publish these results.")
         
+        ensure_all_answers_exist(submission)
+
+        # Save any updated answers passed in payload
+        answers_data = request.data.get('answers')
+        if answers_data:
+            if isinstance(answers_data, list):
+                for item in answers_data:
+                    a_id = item.get('id')
+                    marks = item.get('marks_awarded')
+                    feedback = item.get('feedback')
+                    if a_id:
+                        ans = submission.answers.filter(id=a_id).first()
+                        if ans:
+                            if marks is not None and marks != '':
+                                ans.marks_awarded = int(marks)
+                            elif marks == '':
+                                ans.marks_awarded = None
+                            if feedback is not None:
+                                ans.feedback = feedback
+                            ans.save()
+            elif isinstance(answers_data, dict):
+                for a_id, item in answers_data.items():
+                    ans = submission.answers.filter(id=a_id).first()
+                    if ans:
+                        marks = item.get('marks_awarded')
+                        feedback = item.get('feedback')
+                        if marks is not None and marks != '':
+                            ans.marks_awarded = int(marks)
+                        elif marks == '':
+                            ans.marks_awarded = None
+                        if feedback is not None:
+                            ans.feedback = feedback
+                        ans.save()
+
+        was_already_evaluated = submission.status == 'evaluated'
+
         # Calculate total score
         total_marks = submission.answers.aggregate(Sum('marks_awarded'))['marks_awarded__sum']
         submission.total_score = total_marks or 0
@@ -465,13 +594,15 @@ class PublishResultsView(views.APIView):
         submission.save()
         
         # Send email notification
+        action_verb = "Updated" if was_already_evaluated else "Published"
         candidate_email = submission.candidate.email
         send_mail(
-            subject=f"Results Published: {submission.exam.title}",
+            subject=f"Results {action_verb}: {submission.exam.title}",
             message=f"Hi {submission.candidate.full_name or 'Candidate'},\n\n"
-                    f"Your results for {submission.exam.title} have been published.\n"
+                    f"Your results for {submission.exam.title} have been {action_verb.lower()}.\n"
                     f"Please log in to your dashboard and view your results in the My Tests section.\n\n"
-                    f"Thank you,\nProctoring System Team",
+                    f"Total Score: {submission.total_score}\n\n"
+                    f"Thank you,\nProctorBuddy Team",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[candidate_email],
             fail_silently=True,
@@ -481,12 +612,62 @@ class PublishResultsView(views.APIView):
         from users.models import Notification
         Notification.objects.create(
             user=submission.candidate,
-            title="Results Published",
-            message=f"Your results for {submission.exam.title} have been published. Check 'My Tests' for details.",
+            title=f"Results {action_verb}",
+            message=f"Your results for {submission.exam.title} have been {action_verb.lower()}. Total Score: {submission.total_score}. Check 'My Tests' for details.",
             link=f"/candidate-results/{submission.id}"
         )
         
-        return Response({'message': 'Results published successfully.'})
+        return Response({
+            'message': f'Results {action_verb.lower()} successfully.',
+            'total_score': submission.total_score
+        })
+
+class PublishAllResultsView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, exam_id):
+        exam = get_object_or_404(Exam, id=exam_id, creator=request.user)
+        submissions = Submission.objects.filter(exam=exam, status__in=['submitted', 'evaluated'])
+
+        count = 0
+        now = timezone.now()
+        for submission in submissions:
+            ensure_all_answers_exist(submission)
+            total_marks = submission.answers.aggregate(Sum('marks_awarded'))['marks_awarded__sum']
+            submission.total_score = total_marks or 0
+            was_already_evaluated = submission.status == 'evaluated'
+            submission.status = 'evaluated'
+            submission.evaluated_at = now
+            submission.save()
+            count += 1
+
+            # Dispatch notification to candidate
+            candidate_email = submission.candidate.email
+            action_verb = "Updated" if was_already_evaluated else "Published"
+            send_mail(
+                subject=f"Results {action_verb}: {exam.title}",
+                message=f"Hi {submission.candidate.full_name or 'Candidate'},\n\n"
+                        f"Your results for {exam.title} have been {action_verb.lower()}.\n"
+                        f"Please log in to your dashboard and view your results in the My Tests section.\n\n"
+                        f"Total Score: {submission.total_score}\n\n"
+                        f"Thank you,\nProctorBuddy Team",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[candidate_email],
+                fail_silently=True,
+            )
+
+            from users.models import Notification
+            Notification.objects.create(
+                user=submission.candidate,
+                title=f"Results {action_verb}: {exam.title}",
+                message=f"Your results for {exam.title} have been {action_verb.lower()}. Total Score: {submission.total_score}. Check 'My Tests' for details.",
+                link=f"/candidate-results/{submission.id}"
+            )
+
+        return Response({
+            'message': f'Successfully published results to {count} candidate(s)!',
+            'count': count
+        })
 
 class ProctoringLogCreateView(views.APIView):
     permission_classes = [IsAuthenticated, IsCandidate]
@@ -679,7 +860,10 @@ class DisputeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return self.request.user.raised_disputes.all()
+        from .models import Dispute
+        from django.db.models import Q
+        user = self.request.user
+        return Dispute.objects.filter(Q(raised_by=user) | Q(submission__exam__creator=user)).distinct()
 
     def get_serializer_class(self):
         from .serializers import DisputeSerializer
@@ -687,14 +871,15 @@ class DisputeViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        disputes = self.get_queryset()
+        from .models import Dispute
+        disputes = Dispute.objects.filter(raised_by=request.user).order_by('-created_at')
         serializer = self.get_serializer(disputes, many=True)
         return Response({"results": serializer.data})
 
     def create(self, request, *args, **kwargs):
         submission_id = request.data.get('submission_id')
         question_id = request.data.get('question_id')
-        message = request.data.get('message')
+        message = request.data.get('message', '').strip()
 
         if not submission_id or not message:
             return Response({'error': 'submission_id and message are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -707,7 +892,7 @@ class DisputeViewSet(viewsets.ModelViewSet):
         if submission.status != 'evaluated':
             return Response({'error': 'Results must be evaluated before raising a dispute.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        from .models import Dispute, Question
+        from .models import Dispute, Question, DisputeMessage
         question = None
         if question_id:
             try:
@@ -719,6 +904,12 @@ class DisputeViewSet(viewsets.ModelViewSet):
             submission=submission,
             question=question,
             raised_by=request.user,
+            message=message
+        )
+
+        DisputeMessage.objects.create(
+            dispute=dispute,
+            sender=request.user,
             message=message
         )
         
@@ -737,11 +928,104 @@ class DisputeViewSet(viewsets.ModelViewSet):
             user=submission.exam.creator,
             title="New Dispute Raised",
             message=f"A new dispute has been raised for {submission.exam.title} by {request.user.full_name}.",
-            link=f"/exams/{submission.exam.id}/disputes"
+            link=f"/exams/{submission.exam.id}"
         )
 
         serializer = self.get_serializer(dispute)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'], url_path='messages')
+    def messages(self, request, pk=None):
+        dispute = self.get_object()
+        from .models import DisputeMessage
+        from .serializers import DisputeMessageSerializer, DisputeSerializer
+
+        if request.method == 'GET':
+            msgs = dispute.messages.all().order_by('created_at')
+            return Response(DisputeMessageSerializer(msgs, many=True).data)
+
+        msg_text = request.data.get('message', '').strip()
+        if not msg_text:
+            return Response({'error': 'Message content cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_msg = DisputeMessage.objects.create(
+            dispute=dispute,
+            sender=request.user,
+            message=msg_text
+        )
+
+        is_examiner = (request.user == dispute.submission.exam.creator)
+        if is_examiner:
+            dispute.reply = msg_text
+            dispute.replied_by = request.user
+            dispute.replied_at = timezone.now()
+            if dispute.status == 'open':
+                dispute.status = 'in_progress'
+            dispute.save()
+
+            from users.models import Notification
+            Notification.objects.create(
+                user=dispute.raised_by,
+                title="New Dispute Message from Examiner",
+                message=f"The examiner replied to your dispute for {dispute.submission.exam.title}.",
+                link="/my-disputes"
+            )
+            send_mail(
+                subject=f"New Reply on Dispute: {dispute.submission.exam.title}",
+                message=f"The examiner sent a reply to your dispute for {dispute.submission.exam.title}.\n\nMessage:\n{msg_text}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[dispute.raised_by.email],
+                fail_silently=True,
+            )
+        else:
+            if dispute.status == 'resolved':
+                dispute.status = 'in_progress'
+            dispute.save()
+
+            from users.models import Notification
+            Notification.objects.create(
+                user=dispute.submission.exam.creator,
+                title="New Dispute Message from Candidate",
+                message=f"{request.user.full_name} sent a follow-up on dispute for {dispute.submission.exam.title}.",
+                link=f"/exams/{dispute.submission.exam.id}"
+            )
+            send_mail(
+                subject=f"Candidate Message on Dispute: {dispute.submission.exam.title}",
+                message=f"{request.user.full_name} sent a message regarding the dispute for {dispute.submission.exam.title}.\n\nMessage:\n{msg_text}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[dispute.submission.exam.creator.email],
+                fail_silently=True,
+            )
+
+        return Response({
+            'message': DisputeMessageSerializer(new_msg).data,
+            'dispute': DisputeSerializer(dispute).data
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post', 'patch'], url_path='status')
+    def status_update(self, request, pk=None):
+        dispute = self.get_object()
+        new_status = request.data.get('status')
+        if new_status not in ['open', 'in_progress', 'resolved', 'closed']:
+            return Response({'error': 'Invalid status.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        dispute.status = new_status
+        dispute.save()
+
+        # Send in-app notification about status change
+        is_examiner = (request.user == dispute.submission.exam.creator)
+        target_user = dispute.raised_by if is_examiner else dispute.submission.exam.creator
+        target_link = "/my-disputes" if is_examiner else f"/exams/{dispute.submission.exam.id}"
+        from users.models import Notification
+        Notification.objects.create(
+            user=target_user,
+            title="Dispute Status Updated",
+            message=f"Dispute for {dispute.submission.exam.title} marked as '{new_status.replace('_', ' ').title()}'.",
+            link=target_link
+        )
+
+        from .serializers import DisputeSerializer
+        return Response(DisputeSerializer(dispute).data)
 
 class ExaminerDisputeViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -759,7 +1043,7 @@ class ExaminerDisputeViewSet(viewsets.ViewSet):
         return Response({"results": serializer.data})
 
     def partial_update(self, request, pk=None):
-        from .models import Dispute
+        from .models import Dispute, DisputeMessage
         try:
             dispute = Dispute.objects.get(id=pk)
         except Dispute.DoesNotExist:
@@ -771,17 +1055,24 @@ class ExaminerDisputeViewSet(viewsets.ViewSet):
         reply = request.data.get('reply')
         status_val = request.data.get('status')
 
-        if reply is not None:
+        if reply is not None and reply.strip():
             dispute.reply = reply
             dispute.replied_by = request.user
             dispute.replied_at = timezone.now()
+            if not status_val and dispute.status == 'open':
+                dispute.status = 'in_progress'
+            DisputeMessage.objects.create(
+                dispute=dispute,
+                sender=request.user,
+                message=reply.strip()
+            )
         
         if status_val is not None:
             dispute.status = status_val
             
         dispute.save()
 
-        if reply is not None:
+        if reply is not None and reply.strip():
             candidate_email = dispute.raised_by.email
             send_mail(
                 subject=f"Reply to your Dispute: {dispute.submission.exam.title}",
@@ -816,6 +1107,14 @@ class ExaminerDisputeViewSet(viewsets.ViewSet):
             
         dispute.status = 'resolved'
         dispute.save()
+
+        from users.models import Notification
+        Notification.objects.create(
+            user=dispute.raised_by,
+            title="Dispute Resolved",
+            message=f"The examiner marked your dispute for {dispute.submission.exam.title} as resolved.",
+            link="/my-disputes"
+        )
         return Response({'status': 'resolved'})
 
 class CandidateSubmissionDetailView(views.APIView):
@@ -826,6 +1125,7 @@ class CandidateSubmissionDetailView(views.APIView):
         if submission.status != 'evaluated':
             raise PermissionDenied("Results are not yet published for this exam.")
         
+        ensure_all_answers_exist(submission)
         from .serializers import SubmissionEvaluationSerializer
         serializer = SubmissionEvaluationSerializer(submission)
         return Response(serializer.data)
