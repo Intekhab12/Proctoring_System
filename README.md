@@ -188,6 +188,53 @@ Proctoring_System/
 
 ---
 
+## 🌐 Deploying to Render
+
+You can deploy ProctorBuddy to Render either using the automated **Blueprint (`render.yaml`)** or manually by creating services on your Render Dashboard:
+
+### Method A: Blueprint (Recommended - One Click)
+1. Push your repository to GitHub / GitLab.
+2. In your [Render Dashboard](https://dashboard.render.com/), click **New +** -> **Blueprint**.
+3. Connect your repository. Render will automatically read `render.yaml` and provision:
+   - **PostgreSQL Database** (`proctorbuddy-db`)
+   - **Django Web Service** (`proctorbuddy-backend`)
+   - **React Static Site** (`proctorbuddy-frontend`)
+4. Click **Apply**. Once built, update `FRONTEND_URL` in the backend environment variables with your frontend's actual `.onrender.com` URL.
+
+---
+
+### Method B: Manual Service Creation
+
+#### 1. Create PostgreSQL Database:
+- Name: `proctorbuddy-db`
+- Plan: Free
+
+#### 2. Create Backend Web Service (Django):
+- **Name**: `proctorbuddy-backend`
+- **Root Directory**: `backend` (or leave blank if using build script from root)
+- **Runtime**: `Python 3`
+- **Build Command**: `./backend/build.sh` (or `pip install -r backend/requirements.txt && cd backend && python manage.py collectstatic --no-input && python manage.py migrate`)
+- **Start Command**: `cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`
+- **Environment Variables**:
+  - `PYTHON_VERSION`: `3.11.9`
+  - `DEBUG`: `False`
+  - `SECRET_KEY`: *(Generate a secure random string)*
+  - `DATABASE_URL`: *(Select your created PostgreSQL database from the dropdown or paste Internal Connection String)*
+  - `FRONTEND_URL`: `https://your-frontend-subdomain.onrender.com`
+  - *(Optional SMTP)*: `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, etc.
+
+#### 3. Create Frontend Static Site (React):
+- **Name**: `proctorbuddy-frontend`
+- **Root Directory**: `frontend`
+- **Build Command**: `npm install && npm run build`
+- **Publish Directory**: `dist`
+- **Redirects / Rewrites**:
+  - Add a Rewrite rule: `/*` -> `/index.html` (Status: `Rewrite`)
+- **Environment Variables**:
+  - `VITE_API_URL`: `https://your-backend-subdomain.onrender.com`
+
+---
+
 ## 🚨 Proctoring Rules & Warning Policy
 
 | Violation Type | Severity | Action Taken |
@@ -211,6 +258,7 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 # Database (Leave empty for default SQLite)
+DATABASE_URL=
 POSTGRES_DB=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
@@ -224,6 +272,9 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=
 EMAIL_HOST_PASSWORD=
 DEFAULT_FROM_EMAIL=ProctorBuddy <no-reply@proctorbuddy.com>
+
+# Frontend URL
+FRONTEND_URL=http://localhost:5173
 ```
 
 ### Frontend (`frontend/.env`)
