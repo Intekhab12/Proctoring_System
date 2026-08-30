@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Automatic environment detection
+let defaultApiUrl = 'http://localhost:8000';
+if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
+  defaultApiUrl = 'https://proctorbuddy-backend.onrender.com';
+}
+
+const rawApiUrl = import.meta.env.VITE_API_URL || defaultApiUrl;
 const apiUrl = rawApiUrl.replace(/\/+$/, '');
 
 const axiosInstance = axios.create({
