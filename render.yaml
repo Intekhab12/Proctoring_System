@@ -5,6 +5,7 @@ databases:
 services:
   - type: web
     name: proctorbuddy-backend
+    plan: free  # <-- This tells Render not to use a paid instance
     runtime: python
     rootDir: backend
     buildCommand: ./build.sh
@@ -25,6 +26,7 @@ services:
 
   - type: web
     name: proctorbuddy-frontend
+    # Static sites are inherently free on Render, so no plan flag is needed here
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
