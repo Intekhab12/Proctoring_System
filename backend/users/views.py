@@ -62,30 +62,30 @@ class ForgotPasswordView(views.APIView):
     permission_classes = (AllowAny,)
 
     def post(self, request):
-        email = request.data.get('email')
+        email = (request.data.get('email') or '').strip().lower()
         if not email:
             return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
             
         try:
-            user = User.objects.get(email=email)
+            user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
             return Response({'message': 'If an account exists with this email, an OTP has been sent.'}, status=status.HTTP_200_OK)
 
         otp = str(random.randint(100000, 999999))
-        OTPVerification.objects.filter(email=email).delete() # Remove old OTPs
-        OTPVerification.objects.create(email=email, otp=otp)
+        OTPVerification.objects.filter(email__iexact=email).delete() # Remove old OTPs
+        OTPVerification.objects.create(email=user.email, otp=otp)
 
         try:
             send_mail(
                 'Password Reset OTP - ProctorBuddy',
                 f'Your OTP for password reset is {otp}. It is valid for 10 minutes.',
                 settings.DEFAULT_FROM_EMAIL,
-                [email],
+                [user.email],
                 fail_silently=False,
             )
         except Exception as e:
             print(f"[OTP Dispatch] Failed to send email via SMTP: {e}")
-            print(f"[OTP Fallback Console] Password reset OTP for {email} is: {otp}")
+            print(f"[OTP Fallback Console] Password reset OTP for {user.email} is: {otp}")
 
         return Response({'message': 'If an account exists with this email, an OTP has been sent.'}, status=status.HTTP_200_OK)
 
@@ -93,19 +93,19 @@ class VerifyOTPAndResetPasswordView(views.APIView):
     permission_classes = (AllowAny,)
 
     def post(self, request):
-        email = request.data.get('email')
-        otp = request.data.get('otp')
+        email = (request.data.get('email') or '').strip().lower()
+        otp = (request.data.get('otp') or '').strip()
         new_password = request.data.get('new_password')
 
         if not all([email, otp, new_password]):
             return Response({'error': 'Email, OTP, and new password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            verification = OTPVerification.objects.get(email=email, otp=otp)
+            verification = OTPVerification.objects.get(email__iexact=email, otp=otp)
             if not verification.is_valid():
                 return Response({'error': 'OTP has expired.'}, status=status.HTTP_400_BAD_REQUEST)
                 
-            user = User.objects.get(email=email)
+            user = User.objects.get(email__iexact=email)
             user.set_password(new_password)
             user.save()
             
