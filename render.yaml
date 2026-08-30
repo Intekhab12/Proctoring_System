@@ -23,11 +23,12 @@ services:
       - key: FRONTEND_URL
         value: https://proctorbuddy-frontend.onrender.com
 
-  - type: static_site
+  - type: web
     name: proctorbuddy-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishPath: dist
+    staticPublishPath: dist
     routes:
       - type: rewrite
         source: /*
