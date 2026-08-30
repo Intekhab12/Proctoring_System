@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from django.conf import settings
 from .serializers import UserSerializer, RegisterSerializer, NotificationSerializer
 from .models import OTPVerification, Notification
 from django.contrib.auth.hashers import check_password
@@ -74,13 +75,17 @@ class ForgotPasswordView(views.APIView):
         OTPVerification.objects.filter(email=email).delete() # Remove old OTPs
         OTPVerification.objects.create(email=email, otp=otp)
 
-        send_mail(
-            'Password Reset OTP',
-            f'Your OTP for password reset is {otp}. It is valid for 10 minutes.',
-            settings.DEFAULT_FROM_EMAIL,
-            [email],
-            fail_silently=False,
-        )
+        try:
+            send_mail(
+                'Password Reset OTP - ProctorBuddy',
+                f'Your OTP for password reset is {otp}. It is valid for 10 minutes.',
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            print(f"[OTP Dispatch] Failed to send email via SMTP: {e}")
+            print(f"[OTP Fallback Console] Password reset OTP for {email} is: {otp}")
 
         return Response({'message': 'If an account exists with this email, an OTP has been sent.'}, status=status.HTTP_200_OK)
 
