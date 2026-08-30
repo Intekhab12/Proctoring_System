@@ -1,14 +1,8 @@
 services:
-  # ============================================
-  # 1. PostgreSQL Database
-  # ============================================
   - type: postgresql
     name: proctorbuddy-db
     plan: free
 
-  # ============================================
-  # 2. Django Backend Web Service
-  # ============================================
   - type: web
     name: proctorbuddy-backend
     runtime: python
@@ -27,20 +21,17 @@ services:
           name: proctorbuddy-db
           property: connectionString
       - key: FRONTEND_URL
-        value: https://proctorbuddy-frontend.onrender.com   # update this after frontend is live
+        value: https://proctorbuddy-frontend.onrender.com
 
-  # ============================================
-  # 3. React Frontend Static Site
-  # ============================================
-  - type: static_site          # <-- FIXED: was "static", now "static_site"
+  - type: static_site
     name: proctorbuddy-frontend
     rootDir: frontend
     buildCommand: npm install && npm run build
     publishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        value: https://proctorbuddy-backend.onrender.com
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://proctorbuddy-backend.onrender.com
