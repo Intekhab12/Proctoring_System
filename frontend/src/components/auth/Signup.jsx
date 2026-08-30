@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { 
   Container, TextField, Button, Typography, Box, Alert, 
-  InputAdornment, IconButton, FormControl, InputLabel, Select, MenuItem, Paper
+  InputAdornment, IconButton, FormControl, InputLabel, Select, MenuItem, Paper, CircularProgress
 } from '@mui/material';
 import { Visibility, VisibilityOff, School, Person } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -23,6 +23,7 @@ const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -35,9 +36,11 @@ const Signup = () => {
     if (formData.password !== formData.confirmPassword) {
       return setError('Passwords do not match');
     }
+    setError('');
+    setLoading(true);
     try {
       await axiosInstance.post('/api/auth/register/', formData);
-      await login(formData.email, formData.password);
+      await login(formData.email.trim(), formData.password);
       
       const pendingExam = sessionStorage.getItem('pending_exam');
       if (pendingExam) {
@@ -54,6 +57,8 @@ const Signup = () => {
       } else {
         setError('Registration failed. Check inputs.');
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -209,6 +214,7 @@ const Signup = () => {
               variant="contained" 
               color="primary" 
               size="large"
+              disabled={loading}
               sx={{ 
                 mt: 3, 
                 mb: 2, 
@@ -219,7 +225,7 @@ const Signup = () => {
                 textTransform: 'none'
               }}
             >
-              Complete Registration
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Complete Registration'}
             </Button>
 
             <Box textAlign="center" mt={2}>
