@@ -33,8 +33,10 @@ services:
         value: proctorbud76@gmail.com
       - key: DEFAULT_FROM_EMAIL
         value: ProctorBuddy <proctorbud76@gmail.com>
-      - key: EMAIL_HOST_PASSWORD
-        value: gnmmqtvnsiavpjkx
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
 
   - type: web
     name: proctorbuddy-frontend
